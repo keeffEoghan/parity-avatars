@@ -1,0 +1,56 @@
+{
+  "name": "@epok.tech/parity-avatars",
+  "version": "0.0.0",
+  "description": "Generative avatars for Parity staff as unique NFTs that evolve with their careers.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keeffEoghan/parity-avatars.git"
+  },
+  "author": "Eoghan O'Keeffe <epok.tech@gmail.com> (https://epok.tech)",
+  "license": "",
+  "engines": {
+    "node": "v18.18.0 || *",
+    "yarn": "3.6.3 || *"
+  },
+  "packageManager": "yarn@3.6.3",
+  "scripts": {
+    "start": "yarn dist:fresh",
+    "dev": "parcel --target app --log-level verbose",
+    "dev:fresh": "yarn dev --no-cache",
+    "dist": "yarn clean && yarn build",
+    "dist:fresh": "yarn clean && yarn build:fresh",
+    "build": "parcel build --target app --no-source-maps",
+    "build:fresh": "yarn build --no-cache",
+    "clean": "yarn clean:build & yarn clean:parcel & wait",
+    "clean:build": "rm -rf ./dist/",
+    "clean:parcel": "rm -rf ./.parcel-cache"
+  },
+  "devDependencies": {
+    "@parcel/core": "^2.9.3",
+    "parcel": "^2.9.3"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "src/**/*"
+  ],
+  "targets": {
+    "app": {
+      "isLibrary": false,
+      "engines": {
+        "browsers": "last 2 versions, > 0.5%, not dead"
+      },
+      "distDir": "dist/",
+      "source": "src/index.html",
+      "publicUrl": "./"
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/keeffEoghan/parity-avatars/issues"
+  },
+  "homepage": "https://github.com/keeffEoghan/parity-avatars#readme",
+  "keywords": [
+    "parity",
+    "avatars",
+    "nft"
+  ]
+}
