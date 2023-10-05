@@ -42,15 +42,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@epok.tech/fn-lists@npm:^0.1.4":
+  version: 0.1.4
+  resolution: "@epok.tech/fn-lists@npm:0.1.4"
+  checksum: a09750e1711578803aa099ee9c71414b16d87d337e229c967ce9942f033144d4d40262af8eb06d5804636d61663a2e8a6983c8d98b2d044df8336d724817d277
+  languageName: node
+  linkType: hard
+
 "@epok.tech/parity-avatars@workspace:.":
   version: 0.0.0-use.local
   resolution: "@epok.tech/parity-avatars@workspace:."
   dependencies:
+    "@epok.tech/fn-lists": ^0.1.4
     "@parcel/core": ^2.9.3
     assert: ^2.0.0
     parcel: ^2.9.3
+    parse-hdr: ^1.0.0
     path-browserify: ^1.0.0
     pex-context: ^2.10.4
+    pex-io: ^3.0.1
     pex-renderer: ^3.1.0
     postcss: ^8.0.0
     postcss-import: ^15.1.0
@@ -3363,6 +3373,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"parse-hdr@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "parse-hdr@npm:1.0.0"
+  checksum: 1e5f7b955c0144b44f748437b4e3d17552d039c60c90f031cc46ba0a93e00fe95f510c5b848b5b15031be70fa378854b47ad98df3f18c9603318f63982bca0c9
+  languageName: node
+  linkType: hard
+
 "parse-json@npm:^5.2.0":
   version: 5.2.0
   resolution: "parse-json@npm:5.2.0"
@@ -3465,6 +3482,13 @@ __metadata:
     is-plask: ^1.1.0
     plask-wrap: ^1.0.0
   checksum: 6074f8f76080f2710deb9fe01fceaddeb6a383fd21da38703975d8b68a00cd2ec1e1fe85bc330f979e2378b5f5d98d5c3963d2f8243efc2f3bf57f548250c454
+  languageName: node
+  linkType: hard
+
+"pex-io@npm:^3.0.1":
+  version: 3.0.1
+  resolution: "pex-io@npm:3.0.1"
+  checksum: 0a2271b6474bbb639e98d5579f5430479fe8103ad46ed6502edff46a36553c8d65ec86c2f80901a1cb271a4fab265c018d8d138e0e5e7a7be1e12b665261496d
   languageName: node
   linkType: hard
 

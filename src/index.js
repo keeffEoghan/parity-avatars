@@ -1,59 +1,93 @@
 import getContext from 'pex-context';
 import getRenderer from 'pex-renderer';
-import getSphere from 'primitive-sphere';
+import { load } from 'pex-io';
+import parseHDR from 'parse-hdr';
+import { map } from '@epok.tech/fn-lists/map';
 
 const { max, PI: pi } = Math;
 
-const canvas = document.querySelector('canvas');
-const context = getContext({ canvas });
-const { gl } = context;
-const renderer = getRenderer({ ctx: context, pauseOnBlur: true });
+// For `pex-renderer`'s `gltf` loader to play nicely with `parcel`'s asset hash.
+const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
-context.set({ pixelRatio: max(devicePixelRatio, 1.5) || 1.5 });
+(async () => {
+  const canvas = document.querySelector('canvas');
+  const context = getContext({ canvas });
+  const { gl, PixelFormat, Encoding } = context;
+  const renderer = getRenderer({ ctx: context, pauseOnBlur: true });
 
-const camera = renderer.camera({ fov: pi*0.5, near: 0.1, far: 1e2 });
+  // const updateTexture = (texture, to) => texture._update(context, texture, to);
 
-const orbiter = renderer.orbiter({
-  target: [0, 0, 0], position: [0.3, 0.3, 0.8], lat: 0, lon: pi*0.5, easing: 5e-2,
-  minDistance: 0.2, maxDistance: 1, pan: false, element: canvas
-});
+  const { skyBuffer, sdfImage } = await load({
+    skyBuffer: { arrayBuffer: new URL('../media/sky.hdr', import.meta.url)+'' },
+    sdfImage: { image: new URL('../media/volume-sdf.png', import.meta.url)+'' }
+  });
 
-const cameraOrbiter = renderer.entity([
-  camera, orbiter, renderer.transform({ position: [0, 0, 3] })
-]);
+  const gltfLoading = { enabledCameras: null };
 
-renderer.add(cameraOrbiter);
+  const scenes = await Promise.all(map((u) =>
+      renderer.loadScene(gltfURL(u), gltfLoading),
+    [
+      new URL('../media/humanoid.glb', import.meta.url),
+      // new URL('../media/cube.glb', import.meta.url),
+      // new URL('../media/icosahedron.glb', import.meta.url),
+      // new URL('../media/sphere.glb', import.meta.url),
+      // new URL('../media/dodecahedron.glb', import.meta.url),
+      // new URL('../media/octahedron.glb', import.meta.url),
+      // new URL('../media/tetrahedron.glb', import.meta.url),
+      // new URL('../media/soccer.glb', import.meta.url)
+    ],
+    0));
 
-const imageSDF = new Image();
-const textureSDF = context.texture2D({});
+  context.set({ pixelRatio: max(self.devicePixelRatio, 1.5) || 1.5 });
 
-imageSDF.onload = () => textureSDF._update(context, textureSDF, imageSDF);
-imageSDF.onerror = console.error;
-imageSDF.src = new URL('../media/volume-sdf.png', import.meta.url);
+  const camera = renderer.camera({ fov: pi*0.5, near: 0.1, far: 1e2 });
 
-const cube = renderer.entity([
-  renderer.transform({ position: [0, 0, 0] }),
-  renderer.geometry(getSphere(0.1)),
-  renderer.material({ baseColorMap: textureSDF, metallic: 0.8, roughness: 0.1 })
-]);
+  const orbiter = renderer.orbiter({
+    target: [0, 0.2, 0], position: [0.3, 0.3, 0.6], lat: 0, lon: pi*0.5,
+    easing: 5e-2, minDistance: 0.4, maxDistance: 1, pan: false, element: canvas
+  });
 
-renderer.add(cube);
+  const cameraOrbiter = renderer.entity([
+    camera, orbiter, renderer.transform({ position: [0, 0, 3] })
+  ]);
 
-const skybox = renderer.entity([renderer.skybox({ sunPosition: [1, 1, 1] })]);
+  renderer.add(cameraOrbiter);
 
-renderer.add(skybox);
+  const sdfMaterial = renderer.material({
+    baseColorMap: context.texture2D(sdfImage), metallic: 1, roughness: 0.1
+  });
 
-const reflectionProbe = renderer.entity([renderer.reflectionProbe()]);
+  scenes.forEach((s) => renderer.add(s.root));
 
-renderer.add(reflectionProbe);
+  const [humanoid] = scenes;
 
-function resize() {
-  context.set({ width: innerWidth, height: innerHeight });
-  camera.set({ aspect: innerWidth/innerHeight });
-  renderer.draw();
-}
+  humanoid.entities.forEach((e) =>
+    e.getComponent('Material') && e.addComponent(sdfMaterial));
 
-resize();
-addEventListener('resize', resize);
+  const skyHDR = parseHDR(skyBuffer);
+  const { data: skyData, shape: [skyW, skyH] } = skyHDR;
 
-context.frame(() => renderer.draw());
+  const skyTexture = context.texture2D({
+    data: skyData, width: skyW, height: skyH, flipY: true,
+    pixelFormat: PixelFormat.RGBA32F, encoding: Encoding.Linear
+  });
+
+  const skybox = renderer.skybox({ texture: skyTexture, backgroundBlur: 1 });
+  const reflectionProbe = renderer.reflectionProbe();
+
+  renderer.add(renderer.entity([skybox, reflectionProbe]));
+
+  function resize() {
+    context.set({ width: innerWidth, height: innerHeight });
+    camera.set({ aspect: innerWidth/innerHeight });
+    renderer.draw();
+  }
+
+  resize();
+  addEventListener('resize', resize);
+
+  context.frame(() => renderer.draw());
+
+  self.context = context;
+  self.renderer = renderer;
+})();
