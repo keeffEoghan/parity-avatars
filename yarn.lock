@@ -61,6 +61,7 @@ __metadata:
     path-browserify: ^1.0.0
     pex-context: ^2.10.4
     pex-io: ^3.0.1
+    pex-math: ^2.1.1
     pex-renderer: ^3.1.0
     postcss: ^8.0.0
     postcss-import: ^15.1.0
@@ -3492,7 +3493,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"pex-math@npm:^2.0.0":
+"pex-math@npm:^2.0.0, pex-math@npm:^2.1.1":
   version: 2.1.1
   resolution: "pex-math@npm:2.1.1"
   checksum: 0347f4e1c2782a209e9125155215f57ed97b3a0da9526ae1d21a20711f6dcc584e6fa677c933831a15a5aaa60f4423e70f1e62bf672b75f06ff5cc91750fc72b

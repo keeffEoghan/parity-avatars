@@ -30,6 +30,7 @@
     "parse-hdr": "^1.0.0",
     "pex-context": "^2.10.4",
     "pex-io": "^3.0.1",
+    "pex-math": "^2.1.1",
     "pex-renderer": "^3.1.0",
     "primitive-sphere": "^3.0.0"
   },
