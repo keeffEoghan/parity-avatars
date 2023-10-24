@@ -1,30 +1,32 @@
 import getContext from 'pex-context';
 import getRenderer from 'pex-renderer';
 import { load } from 'pex-io';
-import vec3 from 'pex-math/vec3';
+import math from 'pex-math/utils';
 import parseHDR from 'parse-hdr';
 import { map } from '@epok.tech/fn-lists/map';
+import { range } from '@epok.tech/fn-lists/range';
 
-const { max, PI: pi } = Math;
-const distance3 = vec3.distance;
+import * as inSDF from './in-sdf-glsl';
+
+const { max, abs, PI: pi } = Math;
+const { lerp } = math;
 
 // For `pex-renderer`'s `gltf` loader to play nicely with `parcel`'s asset hash.
 const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
 (async () => {
   const canvas = document.querySelector('canvas');
-
-  const context = getContext({
-    canvas//, pixelRatio: max(self.devicePixelRatio, 1.5) || 1.5
-  });
-
+  const context = getContext({ canvas });
   const { gl, PixelFormat, Encoding } = context;
   const renderer = getRenderer({ ctx: context, pauseOnBlur: true });
+  const pipelineShaders = renderer.shaders.pipeline;
+
+  console.log('pipeline', pipelineShaders);
 
   // const updateTexture = (texture, to) => texture._update(context, texture, to);
 
-  const { skyBuffer, sdfImage } = await load({
-    skyBuffer: { arrayBuffer: new URL('../media/sky.hdr', import.meta.url)+'' },
+  const { skyHDR, sdfImage } = await load({
+    skyHDR: { arrayBuffer: new URL('../media/sky-1.hdr', import.meta.url)+'' },
     sdfImage: { image: new URL('../media/volume-sdf.png', import.meta.url)+'' }
   });
 
@@ -39,46 +41,33 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       // new URL('../media/sphere.glb', import.meta.url),
       // new URL('../media/dodecahedron.glb', import.meta.url),
       // new URL('../media/octahedron.glb', import.meta.url),
-      // new URL('../media/tetrahedron.glb', import.meta.url),
+      new URL('../media/tetrahedron.glb', import.meta.url),
       // new URL('../media/soccer.glb', import.meta.url)
     ],
     0));
 
   const camera = renderer.camera({
-    fov: pi*0.5, near: 0.1, far: 1e2, fStop: 1.2, sensorFit: 'overscan'
+    fov: pi*0.5, near: 1e-2, far: 1e2, fStop: 1, sensorFit: 'overscan'
   });
 
-  const orbiter = renderer.orbiter({
-    target: [0, 0.2, 0], position: [0.3, 0.3, 0.6], lat: 0, lon: pi*0.5,
-    easing: 5e-2, minDistance: 0.4, maxDistance: 1, pan: false, element: canvas
+  const ease = { orbit: 1e-1, dof: 4e-2 };
+
+  const orbit = renderer.orbiter({
+    target: [0, 0, 0], position: [0, 0, 0.45], easing: 5e-2,
+    minDistance: 0.45, maxDistance: 1.1, element: canvas, pan: false
   });
 
   const post = renderer.postProcessing({
-    fxaa: true,
-    ssao: true,
-    dof: true,
+    fxaa: true, ssao: true, dof: true, dofFocusDistance: 0,
     bloom: true, bloomThreshold: 1, bloomRadius: 0.5
   });
 
-  const viewer = renderer.entity([
-    camera, orbiter, post, renderer.transform({ position: [0, 0, 3] })
-  ]);
+  const viewer = renderer.entity([camera, orbit, post]);
 
   renderer.add(viewer);
 
-  const sdfMaterial = renderer.material({
-    baseColorMap: context.texture2D(sdfImage), metallic: 1, roughness: 0.1
-  });
-
-  scenes.forEach((s) => renderer.add(s.root));
-
-  const [humanoid] = scenes;
-
-  humanoid.entities.forEach((e) =>
-    e.getComponent('Material') && e.addComponent(sdfMaterial));
-
-  const skyHDR = parseHDR(skyBuffer);
-  const { data: skyData, shape: [skyW, skyH] } = skyHDR;
+  const skyHDRData = parseHDR(skyHDR);
+  const { data: skyData, shape: [skyW, skyH] } = skyHDRData;
 
   const skyTexture = context.texture2D({
     data: skyData, width: skyW, height: skyH, flipY: true,
@@ -93,6 +82,39 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   renderer.add(renderer.entity([skybox, reflector]));
 
+  const sdf = renderer.add(renderer.entity());
+  const sdfTexture = context.texture2D(sdfImage);
+
+  const humanoidMaterial = renderer.material({
+    metallic: 0.1, roughness: 0.3,
+    blend: true, opacity: 0.3,
+    castShadows: true, receiveShadows: true
+  });
+
+  scenes.forEach((s) => renderer.add(s.root));
+
+  const [humanoid, tetrahedron] = scenes;
+
+  humanoid.entities.forEach((e) =>
+    e.getComponent('Material') && e.addComponent(humanoidMaterial));
+
+  humanoid.root.transform.set({ position: [0, -0.3, -5e-2] });
+
+  const shapeMaterial = renderer.material({
+    ...inSDF,
+    uniforms: {
+      x_sdfTexture: sdfTexture,
+      x_sdfTransform: sdf.transform.modelMatrix
+    },
+    castShadows: true, receiveShadows: true, metallic: 1, roughness: 0.1
+  });
+
+  tetrahedron.entities.forEach((e) =>
+    e.getComponent('Material') && e.addComponent(shapeMaterial));
+
+  tetrahedron.root.transform
+    .set({ scale: range(3, 0.2), position: [0, 0.2, 0] });
+
   function resize() {
     const width = self.innerWidth;
     const height = self.innerHeight;
@@ -106,15 +128,19 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   resize();
   addEventListener('resize', resize);
 
-  context.frame(() => {
-    const d = distance3(renderer.root.transform.worldPosition,
-      viewer.transform.worldPosition);
+  orbit.set({ distance: lerp(orbit.minDistance, orbit.maxDistance, 0.5) });
 
-    (post.dofFocusDistance !== d) && post.set({ dofFocusDistance: d });
+  context.frame(() => {
+    const d = orbit.distance;
+    const dof = post.dofFocusDistance;
+
+    (abs(dof-d) > 1e-4) &&
+      post.set({ dofFocusDistance: lerp(dof, d, ease.dof) });
 
     renderer.draw();
   });
 
   self.context = context;
   self.renderer = renderer;
+  self.scenes = scenes;
 })();

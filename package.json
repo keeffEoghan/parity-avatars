@@ -31,11 +31,12 @@
     "pex-context": "^2.10.4",
     "pex-io": "^3.0.1",
     "pex-math": "^2.1.1",
-    "pex-renderer": "^3.1.0",
-    "primitive-sphere": "^3.0.0"
+    "pex-renderer": "^3.1.0"
   },
   "devDependencies": {
     "@parcel/core": "^2.9.3",
+    "@parcel/transformer-glsl": "2.9.3",
+    "@parcel/transformer-inline-string": "2.9.3",
     "assert": "^2.0.0",
     "parcel": "^2.9.3",
     "path-browserify": "^1.0.0",
