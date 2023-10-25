@@ -1,2 +1,0 @@
-
-    positionView = uViewMatrix * skinMat * position;
