@@ -28,6 +28,7 @@
   "dependencies": {
     "@epok.tech/fn-lists": "^0.1.4",
     "@thi.ng/math": "^5.6.3",
+    "@thi.ng/matrices": "^2.2.2",
     "@thi.ng/morton": "^3.1.49",
     "@thi.ng/random": "^3.6.10",
     "@thi.ng/vectors": "^7.7.22",

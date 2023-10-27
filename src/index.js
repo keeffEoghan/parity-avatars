@@ -1,20 +1,27 @@
 import getContext from 'pex-context';
 import getRenderer from 'pex-renderer';
 import { load } from 'pex-io';
-import math from 'pex-math/utils';
-import quat from 'pex-math/quat';
 import parseHDR from 'parse-hdr';
 import { setC3 } from '@thi.ng/vectors/setc';
 import { mulN2, mulN3 } from '@thi.ng/vectors/muln';
+import { maddN3 } from '@thi.ng/vectors/maddn';
+import { normalize4 } from '@thi.ng/vectors/normalize';
 import { mix } from '@thi.ng/math/mix';
+import { Smush32 as Random } from '@thi.ng/random';
 import { map } from '@epok.tech/fn-lists/map';
 import { reduce } from '@epok.tech/fn-lists/reduce';
 import { range } from '@epok.tech/fn-lists/range';
+import { wrap } from '@epok.tech/fn-lists/wrap';
 
-import * as inSDF from './in-sdf-glsl';
+import * as inVolume from './in-volume-glsl';
 
-const { max, abs, random, floor, sqrt, sin, cos, PI: pi, TAU: tau = pi*2 } = Math;
-const { lerp } = math;
+const {
+    max, abs, floor, round, sqrt, sin, cos, PI: pi, TAU: tau = pi*2
+  } = Math;
+
+const random = new Random(0x67229302);
+const randomFloat = () => random.float();
+const randomInt = () => random.int();
 
 // For `pex-renderer`'s `gltf` loader to play nicely with `parcel`'s asset hash.
 const gltfURL = (url) => url.href.replace(/\?.*$/, '');
@@ -28,11 +35,11 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   console.log('pipeline', pipelineShaders);
 
-  const { skyHDR, sdfImage } = await load({
+  const { skyHDR, volumeImg } = await load({
     skyHDR: { arrayBuffer: new URL('../media/sky-0.hdr', import.meta.url)+'' },
-    // sdfImage: { image: new URL('../media/volume-sdf.png', import.meta.url)+'' }
-    sdfImage: { image: new URL('../media/volume-density.png', import.meta.url)+'' }
-    // sdfImage: { image: new URL('../media/volume-test.png', import.meta.url)+'' }
+    volumeImg: { image: new URL('../media/volume-sdf.png', import.meta.url)+'' }
+    // volumeImg: { image: new URL('../media/volume-density.png', import.meta.url)+'' }
+    // volumeImg: { image: new URL('../media/volume-test.png', import.meta.url)+'' }
   });
 
   const gltfLoading = { enabledCameras: null };
@@ -52,16 +59,15 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     0));
 
   const camera = renderer.camera({
-    fov: pi*0.5, near: 1e-2, far: 1e2, fStop: 1, sensorFit: 'overscan'
+    fov: pi*0.5, near: 1e-2, far: 1e2, fStop: 1, sensorFit: 'overscan',
+    exposure: 0
   });
 
-  const ease = { orbit: 1e-1, dof: 4e-2 };
+  const ease = { orbit: 1e-1, dof: 4e-2, exposure: 4e-2 };
 
   const orbit = renderer.orbiter({
-    target: [0, 0, 0], position: [0, 0, 0.45], easing: 5e-2, element: canvas,
-    minDistance: 0.45, maxDistance: 1.1
-    // target: [0, 0.25, 0], position: [0, 0.25, 0.45], easing: 5e-2, element: canvas,
-    // maxDistance: 1.1
+    element: canvas, target: [0, 0.1, 0.18], position: [-0.1, 0.4, 0.1],
+    minDistance: 0.3, maxDistance: 1.5, easing: 5e-2
   });
 
   const post = renderer.postProcessing({
@@ -87,22 +93,25 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const skybox = renderer.skybox({ texture: skyTexture, backgroundTexture });
   const reflector = renderer.reflectionProbe();
+  const environment = renderer.entity([skybox, reflector]);
 
-  renderer.add(renderer.entity([skybox, reflector]));
+  environment.transform
+    .set({ rotation: mulN3(null, [0, 1, 0, cos(pi*0.5)], sin(pi*0.5)) });
 
-  const sdf = renderer.add(renderer.entity());
-  const sdfTexture = context.texture2D(sdfImage);
-  const { width: sdfLayerX, height: sdfLayerY } = sdfTexture;
-  const sdfSize = [sdfLayerX, sdfLayerY, 8, 8];
+  renderer.add(environment);
 
-  // sdf.transform.set({ position: [0, -0.3, -5e-2] });
-  sdf.transform.set({
-    scale: range(3, 0.8),
-    // position: [0, 0.1, 0],
-    // rotation: [0, 0, sin(0.5), cos(0.5)]
-  });
+  const volume = renderer.add(renderer.entity());
+  const volumeTexture = context.texture2D(volumeImg);
+  const { width: volumeLayerX, height: volumeLayerY } = volumeTexture;
+  const volumeSize = [volumeLayerX, volumeLayerY, 8, 8];
 
-  // scenes.forEach((s) => renderer.add(s.root));
+  // volume.transform.set({ scale: range(3, 0.8) });
+  volume.transform.set({ scale: range(3, 1.3) });
+
+  const volumeBounds = [
+    { radius: 0.38, centre: [0, -0.19, -0.05] },
+    { radius: 0.23, centre: [-0.01, 0.25, 0.07] }
+  ];
 
   const [humanoid, shape] = scenes;
 
@@ -113,16 +122,17 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   humanoid.entities.forEach((e) =>
     e.getComponent('Material') && e.addComponent(humanoidMaterial));
 
-  // renderer.add(humanoid.root, sdf);
-  humanoid.root.transform.set({ scale: range(3, 2.3), position: [0, -0.6, 0] });
+  // renderer.add(humanoid.root, volume);
+  // humanoid.root.transform.set({ scale: range(3, 2.3), position: [0, -0.6, 0] });
+  humanoid.root.transform.set({ scale: range(3, 1.2), position: [0, -0.32, 0] });
 
   const shapeMaterial = renderer.material({
-    ...inSDF,
+    ...inVolume,
     uniforms: {
-      x_sdfTexture: sdfTexture,
-      x_sdfSize: sdfSize,
-      x_sdfTransform: sdf.transform.modelMatrix,
-      x_sdfRange: [0, 1*(2**-8)]
+      x_volumeTexture: volumeTexture,
+      x_volumeSize: volumeSize,
+      x_volumeTransform: volume.transform.modelMatrix,
+      x_volumeRange: [0, 3e-2]
     },
     castShadows: true, receiveShadows: true, metallic: 1, roughness: 0.3
   });
@@ -130,20 +140,19 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   /**
    * @see [Spherical distribution](https://observablehq.com/@rreusser/equally-distributing-points-on-a-sphere)
    */
-  const onSphere = (angle, depth) =>
-    mulN2(null, [cos(angle), sin(angle), depth], sqrt(1-(depth*depth)))
+  const onSphere = (angle, depth, to = []) =>
+    mulN2(null, setC3(to, cos(angle), sin(angle), depth), sqrt(1-(depth**2)));
 
   const shapeInstances = reduce((to, _, i, a) => {
-      // const head = random() > 0.5;
-      const r = random()*0.6;
-      const p = mulN3(null, onSphere(random()*tau, mix(-1, 1, random())), r);
+      const { radius: r, centre: c } = wrap(randomInt(), volumeBounds);
+      const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
+      const q = map(randomFloat, range(4), 0);
 
+      maddN3(p, p, (randomFloat()**0.6)*r, c);
       (to.offsets ??= { data: a, divisor: 1 }).data[i] = p;
 
-      const q = map(random, range(4), 0);
-
       q[3] *= tau;
-      (to.rotations ??= { data: [], divisor: 1 }).data[i] = quat.normalize(q);
+      (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(q, q);
 
       (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 2e-2);
       to.instances ??= a.length;
@@ -169,18 +178,19 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const pointLights = map(({ color, position }) =>
       renderer.add(renderer.entity([
-        renderer.pointLight({ intensity: 2, castShadows: true, color }),
+        renderer.pointLight({ intensity: 30, castShadows: true, color }),
         renderer.transform({ position })
       ])),
     [
-      { color: [0, 0, 1, 1], position: [-1, 1, -1] },
-      { color: [1, 0, 1, 1], position: [1, 1, 1] }
+      { color: [0, 0, 1, 1], position: [-1, 1, -2] },
+      { color: [0, 0, 1, 1], position: [-1, 1, 2] },
+      { color: [1, 0, 1, 1], position: [1, 1, -2] },
+      { color: [1, 0, 1, 1], position: [1, 1, 2] }
     ],
     0);
 
   function resize() {
-    const width = self.innerWidth;
-    const height = self.innerHeight;
+    const { innerWidth: width, innerHeight: height } = self;
     const { pixelRatio: pr } = context;
 
     context.set({ width, height });
@@ -191,15 +201,20 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   resize();
   addEventListener('resize', resize);
 
-  orbit.set({ distance: lerp(orbit.minDistance, orbit.maxDistance, 0.5) });
+  orbit.set({
+    distance: mix(orbit.minDistance, orbit.maxDistance, 0.5),
+    lat: 10, lon: -70
+  });
 
   context.frame(() => {
     const d = orbit.distance;
     const dof = post.dofFocusDistance;
+    const e = camera.exposure;
 
     (abs(dof-d) > 1e-4) &&
-      post.set({ dofFocusDistance: lerp(dof, d, ease.dof) });
+      post.set({ dofFocusDistance: mix(dof, d, ease.dof) });
 
+    (abs(e-1) > 1e-4) && camera.set({ exposure: mix(e, 1, ease.exposure) });
     renderer.draw();
   });
 

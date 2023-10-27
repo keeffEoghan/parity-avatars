@@ -69,6 +69,7 @@ __metadata:
     "@parcel/transformer-glsl": 2.9.3
     "@parcel/transformer-inline-string": 2.9.3
     "@thi.ng/math": ^5.6.3
+    "@thi.ng/matrices": ^2.2.2
     "@thi.ng/morton": ^3.1.49
     "@thi.ng/random": ^3.6.10
     "@thi.ng/vectors": ^7.7.22
@@ -1319,6 +1320,18 @@ __metadata:
   dependencies:
     "@thi.ng/api": ^8.9.6
   checksum: 00bbdf70e7dfdf5cdf039a06a1279890b8f583f1674fbe0f5a97d8142e37c7488e362cf396fcf9feead85ceb385f33942eac988b8f2cabf4aeb2aa6b9c195747
+  languageName: node
+  linkType: hard
+
+"@thi.ng/matrices@npm:^2.2.2":
+  version: 2.2.2
+  resolution: "@thi.ng/matrices@npm:2.2.2"
+  dependencies:
+    "@thi.ng/api": ^8.9.6
+    "@thi.ng/checks": ^3.4.6
+    "@thi.ng/math": ^5.6.3
+    "@thi.ng/vectors": ^7.7.22
+  checksum: 32b899051e64e197d7803fc9c4b9d3961ea68d8580a5359cf8d5b47eabf7a8af35914aff659b41f1cfaea2763fc51006f3a983aefb09eb8ec95084bfcc992b0a
   languageName: node
   linkType: hard
 

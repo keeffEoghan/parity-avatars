@@ -7,11 +7,11 @@ void main() {
 #pragma glslify: map = require(glsl-map);
 #pragma glslify: inverse = require(glsl-inverse);
 
-uniform sampler2D x_sdfTexture;
-// Size of the SDF volume texture as `[layer-x, layer-y, layers-x, layers-y]`.
-uniform vec4 x_sdfSize;
-uniform mat4 x_sdfTransform;
-uniform vec2 x_sdfRange;
+uniform sampler2D x_volumeTexture;
+// Size of the volume texture as `[layer-x, layer-y, layers-x, layers-y]`.
+uniform vec4 x_volumeSize;
+uniform mat4 x_volumeTransform;
+uniform vec2 x_volumeRange;
 
 void main() {
   /**
@@ -42,9 +42,9 @@ void main() {
   /**
    * Transform the `position` as the origin instead of the `aPosition`:
    * ...
-   * 3. Now the origin is in world-space, use it to sample the SDF
+   * 3. Now the origin is in world-space, use it to sample the volume
    * 4. Swap `position` back to `aPosition`
-   * 5. Apply SDF transform, sampled at the origin, to `position`
+   * 5. Apply volume transform, sampled at the origin, to `position`
    * 6. Reapply the other transforms to `position` as per default flow
    * ...
    */
@@ -54,36 +54,38 @@ void main() {
     position = uModelMatrix*position;
   #endif
 
-  // Transform world-space origin position into SDF space.
-  vec3 x_sdfAt = map(vec3(inverse(x_sdfTransform)*position).xzy,
+  // Transform world-space origin position into volume space.
+  vec3 x_volumeAt = map(vec3(inverse(x_volumeTransform)*position).xzy,
     vec3(-1, 1, -1), vec3(1, -1, 1),
-    vec3(0), vec3(1, 1, x_sdfSize.z*x_sdfSize.w));
+    vec3(0), vec3(1, 1, x_volumeSize.z*x_volumeSize.w));
 
-  // Transform the SDF-space origin into SDF UV-space.
-  vec2 x_sdfUV = x_sdfAt.xy+
-    floor(vec2(mod(x_sdfAt.z, x_sdfSize.z), x_sdfAt.z/x_sdfSize.z));
+  // Transform the volume-space origin into volume UV-space.
+  vec2 x_volumeUV = x_volumeAt.xy+
+    floor(vec2(mod(x_volumeAt.z, x_volumeSize.z), x_volumeAt.z/x_volumeSize.z));
 
-  x_sdfUV /= x_sdfSize.zw;
+  x_volumeUV /= x_volumeSize.zw;
 
-  float x_sdfIn = step(abs(x_sdfUV.x-0.5), 0.5)*step(abs(x_sdfUV.y-0.5), 0.5);
+  float x_volumeIn = step(abs(x_volumeUV.x-0.5), 0.5)*
+    step(abs(x_volumeUV.y-0.5), 0.5);
 
-  // Sample the SDF at the world-space origin.
-  // float x_sdfScale = clamp(1.0-(texture2D(x_sdfTexture, x_sdfUV).x*9.0),
-  //   0.0, 1.0);
-  // float x_sdfScale = step(texture2D(x_sdfTexture, x_sdfUV).x, 0.0);
-  float x_sdfScale = smoothstep(x_sdfRange.y, x_sdfRange.x,
-    texture2D(x_sdfTexture, x_sdfUV).x);
+  // Sample the volume at the world-space origin.
+  vec4 x_voxel = texture2D(x_volumeTexture, x_volumeUV);
 
   #if defined(USE_VERTEX_COLORS) || defined(USE_INSTANCED_COLOR)
-    vColor += texture2D(x_sdfTexture, x_sdfUV);
-    vColor.xyz = map(vColor.xyz, vec3(0), vec3(1), vec3(-0.2), vec3(1.4));
-    vColor = mix(vec4(1), vColor, x_sdfIn);
+    vColor.rgb = map(vColor.rgb+x_voxel.rgb,
+      vec3(0), vec3(1), vec3(-0.2), vec3(1.4));
+
+    vColor = mix(vec4(1), vColor, x_volumeIn);
   #endif
 
-  // Swap `position` back, from origin, to `aPosition` scaled by the SDF lookup.
-  position = vec4(map(x_sdfScale*x_sdfIn, 0.0, 1.0, 0.1, 1.0)*aPosition, 1);
+  x_voxel = smoothstep(x_volumeRange.y, x_volumeRange.x, x_voxel);
 
-  // Reapply transforms to `position`.
+  // Swap `position` back, from origin, to `aPosition` scaled by volume sample.
+  position = vec4(aPosition*
+      map(x_volumeIn*x_voxel.rgb, vec3(0), vec3(1), vec3(0), vec3(1)),
+    1);
+
+  // Reapply transformations to `position`.
   #ifdef USE_DISPLACEMENT_MAP
     position.xyz += uDisplacement*h*normal;
   #endif
