@@ -123,7 +123,6 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     e.getComponent('Material') && e.addComponent(humanoidMaterial));
 
   // renderer.add(humanoid.root, volume);
-  // humanoid.root.transform.set({ scale: range(3, 2.3), position: [0, -0.6, 0] });
   humanoid.root.transform.set({ scale: range(3, 1.2), position: [0, -0.32, 0] });
 
   const shapeMaterial = renderer.material({
@@ -170,7 +169,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
     m && e.removeComponent(m);
     e.addComponent(shapeMaterial);
-    g?.set?.(shapeInstances);
+    g.set({ ...shapeInstances });
   });
 
   shape.root.transform.set({ position: [0, -0.1, 0] });
@@ -202,7 +201,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   addEventListener('resize', resize);
 
   orbit.set({
-    distance: mix(orbit.minDistance, orbit.maxDistance, 0.5),
+    distance: mix(orbit.minDistance, orbit.maxDistance, 0.2),
     lat: 10, lon: -70
   });
 
