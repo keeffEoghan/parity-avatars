@@ -4,6 +4,8 @@ import { load } from 'pex-io';
 import parseHDR from 'parse-hdr';
 import { setC3 } from '@thi.ng/vectors/setc';
 import { mulN2, mulN3 } from '@thi.ng/vectors/muln';
+import { subN2 } from '@thi.ng/vectors/subn';
+import { addN2 } from '@thi.ng/vectors/addn';
 import { maddN3 } from '@thi.ng/vectors/maddn';
 import { normalize4 } from '@thi.ng/vectors/normalize';
 import { mix } from '@thi.ng/math/mix';
@@ -16,10 +18,12 @@ import { wrap } from '@epok.tech/fn-lists/wrap';
 import * as shapeInVolume from './shape-in-volume';
 
 const {
-    max, abs, floor, round, sqrt, sin, cos, PI: pi, TAU: tau = pi*2
+    min, max, abs, floor, round, sqrt, sin, cos, PI: pi, TAU: tau = pi*2
   } = Math;
 
 const query = new URLSearchParams(location.search);
+
+const pauseOnBlur = !(query.get('pause-on-blur') === 'false');
 
 const random = new Random(parseInt(query.get('seed') ?? '0x67229302'));
 const randomFloat = () => random.float();
@@ -32,7 +36,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const canvas = document.querySelector('canvas');
   const context = getContext({ canvas });
   const { gl, PixelFormat, Encoding } = context;
-  const renderer = getRenderer({ ctx: context, pauseOnBlur: true });
+  const renderer = getRenderer({ ctx: context, pauseOnBlur });
   const pipelineShaders = renderer.shaders.pipeline;
 
   console.log('pipeline', pipelineShaders);
@@ -51,7 +55,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     [
       new URL('../media/humanoid.glb', import.meta.url),
       new URL('../media/cube.glb', import.meta.url),
-      // new URL('../media/tetrahedron.glb', import.meta.url),
+      new URL('../media/tetrahedron.glb', import.meta.url),
       // @todo Why is this white? Might be broken normals, tangents, even UVs?
       // new URL('../media/icosahedron.glb', import.meta.url),
       // @todo Why is this white? Might be broken normals, tangents, even UVs?
@@ -70,20 +74,23 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     exposure: 0
   });
 
-  const ease = { orbit: 1e-1, dof: 4e-2, exposure: 4e-2 };
+  const ease = {
+    eps: 1e-4,
+    orbit: 5e-2, dof: 4e-2, exposure: 4e-2, ramp: 2e-2
+  };
 
   const orbit = renderer.orbiter({
-    element: canvas, target: [0, 0.1, 0.18], position: [-0.1, 0.4, 0.1],
-    minDistance: 0.3, maxDistance: 1.5, easing: 5e-2
+    element: canvas, target: [0, 0.1, 0.18], position: [-0.1, 0.3, 0.1],
+    minDistance: 0.3, maxDistance: 1.5, easing: ease.orbit
   });
 
   const post = renderer.postProcessing({
-    fxaa: true, ssao: true, dof: true, dofFocusDistance: 0,
+    fxaa: true, ssao: true,
+    dof: true, dofFocusDistance: 0,
     bloom: true, bloomThreshold: 1, bloomRadius: 0.5
   });
 
   const viewer = renderer.entity([camera, orbit, post]);
-  // const viewer = renderer.entity([camera, orbit]);
 
   renderer.add(viewer);
 
@@ -117,7 +124,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     { radius: 0.23, centre: [-0.01, 0.25, 0.07] }
   ];
 
-  const [humanoid, shape] = scenes;
+  const [humanoid, ...shapes] = scenes;
 
   const humanoidMaterial = renderer.material({
     metallic: 0.2, roughness: 0.8, blend: true, opacity: 1e-2
@@ -127,7 +134,8 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     e.getComponent('Material') && e.addComponent(humanoidMaterial));
 
   // renderer.add(humanoid.root, volume);
-  humanoid.root.transform.set({ scale: range(3, 1.2), position: [0, -0.32, 0] });
+  humanoid.root.transform
+    .set({ scale: range(3, 1.2), position: [0, -0.32, 0] });
 
   const shapeMaterial = renderer.material({
     ...shapeInVolume,
@@ -135,9 +143,9 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       x_volumeTexture: volumeTexture,
       x_volumeTile: [8, 8],
       x_volumeTransform: volume.transform.modelMatrix,
-      x_volumeRamp: [0, 3e-2]
+      x_volumeRamp: subN2(null, [0, 3e-2], 3e-2)
     },
-    castShadows: true, receiveShadows: true, metallic: 1, roughness: 0.3
+    castShadows: true, receiveShadows: true, metallic: 0.9, roughness: 0.5
   });
 
   /**
@@ -146,51 +154,55 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const onSphere = (angle, depth, to = []) =>
     mulN2(null, setC3(to, cos(angle), sin(angle), depth), sqrt(1-(depth**2)));
 
-  const shapeInstances = reduce((to, _, i, a) => {
-      const { radius: r, centre: c } = wrap(randomInt(), volumeBounds);
-      const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
-      const q = map(randomFloat, range(4), 0);
+  const shapesInstances = shapes.map(({ entities: es, root: r }, s) => {
+    const shapeInstances = reduce((to, _, i, a) => {
+        const { radius: r, centre: c } = wrap(randomInt(), volumeBounds);
+        const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
+        const q = map(randomFloat, range(4), 0);
 
-      maddN3(p, p, (randomFloat()**0.6)*r, c);
-      (to.offsets ??= { data: a, divisor: 1 }).data[i] = p;
+        maddN3(p, p, (randomFloat()**0.6)*r, c);
+        (to.offsets ??= { data: a, divisor: 1 }).data[i] = p;
 
-      q[3] *= tau;
-      (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(q, q);
+        q[3] *= tau;
+        (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(q, q);
 
-      // (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 2e-2);
-      (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 5e-2);
-      to.instances ??= a.length;
+        // (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 2e-2);
+        (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 5e-2);
+        to.instances ??= a.length;
 
-      return to;
-    },
-    // range(1e4), {});
-    range(1e3), {});
+        return to;
+      },
+      // range(1e4), {});
+      range(1e3), {});
 
-  shape.entities.forEach((e) => {
-    const g = e.getComponent('Geometry');
+    es.forEach((e) => {
+      const g = e.getComponent('Geometry');
 
-    if(!g) { return; }
+      if(!g) { return; }
 
-    const m = e.getComponent('Material');
+      const m = e.getComponent('Material');
 
-    m && e.removeComponent(m);
-    e.addComponent(shapeMaterial);
-    g.set({ ...shapeInstances });
+      m && e.removeComponent(m);
+      e.addComponent(shapeMaterial);
+      g.set(shapeInstances);
+    });
+
+    r.transform.set({ position: [0, -0.1, 0] });
+    renderer.add(r);
+
+    return shapeInstances;
   });
-
-  shape.root.transform.set({ position: [0, -0.1, 0] });
-  renderer.add(shape.root);
 
   const pointLights = map(({ color, position }) =>
       renderer.add(renderer.entity([
-        renderer.pointLight({ intensity: 30, castShadows: true, color }),
+        renderer.pointLight({ intensity: 10, castShadows: true, color }),
         renderer.transform({ position })
       ])),
     [
-      { color: [0, 0, 1, 1], position: [-1, 1, -2] },
-      { color: [0, 0, 1, 1], position: [-1, 1, 2] },
-      { color: [1, 0, 1, 1], position: [1, 1, -2] },
-      { color: [1, 0, 1, 1], position: [1, 1, 2] }
+      { color: [0, 0, 1, 1], position: [-1, 1, -1] },
+      { color: [0, 0, 1, 1], position: [-1, 1, 1] },
+      { color: [1, 0, 1, 1], position: [1, 1, -1] },
+      { color: [1, 0, 1, 1], position: [1, 1, 1] }
     ],
     0);
 
@@ -212,14 +224,17 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   });
 
   context.frame(() => {
+    const { eps, dof: easeD, exposure: easeE, ramp: easeR } = ease;
     const d = orbit.distance;
     const dof = post.dofFocusDistance;
-    const e = camera.exposure;
+    const expose = camera.exposure;
+    const ramp = shapeMaterial.uniforms.x_volumeRamp;
+    const [r0] = ramp;
 
-    (abs(dof-d) > 1e-4) &&
-      post.set({ dofFocusDistance: mix(dof, d, ease.dof) });
+    (abs(d-dof) > eps) && post.set({ dofFocusDistance: mix(dof, d, easeD) });
+    (1-expose > eps) && camera.set({ exposure: mix(expose, 1, easeE) });
+    (0-r0 > eps) && addN2(null, ramp, mix(r0, 0, easeR)-r0);
 
-    (abs(e-1) > 1e-4) && camera.set({ exposure: mix(e, 1, ease.exposure) });
     renderer.draw();
   });
 
