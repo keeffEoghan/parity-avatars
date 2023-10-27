@@ -7,11 +7,12 @@ void main() {
 #pragma glslify: map = require(glsl-map);
 #pragma glslify: inverse = require(glsl-inverse);
 
+#pragma glslify: volume = require(../volume);
+
 uniform sampler2D x_volumeTexture;
-// Size of the volume texture as `[layer-x, layer-y, layers-x, layers-y]`.
-uniform vec4 x_volumeSize;
+uniform vec2 x_volumeTile;
 uniform mat4 x_volumeTransform;
-uniform vec2 x_volumeRange;
+uniform vec2 x_volumeRamp;
 
 void main() {
   /**
@@ -54,36 +55,23 @@ void main() {
     position = uModelMatrix*position;
   #endif
 
-  // Transform world-space origin position into volume space.
-  vec3 x_volumeAt = map(vec3(inverse(x_volumeTransform)*position).xzy,
-    vec3(-1, 1, -1), vec3(1, -1, 1),
-    vec3(0), vec3(1, 1, x_volumeSize.z*x_volumeSize.w));
-
-  // Transform the volume-space origin into volume UV-space.
-  vec2 x_volumeUV = x_volumeAt.xy+
-    floor(vec2(mod(x_volumeAt.z, x_volumeSize.z), x_volumeAt.z/x_volumeSize.z));
-
-  x_volumeUV /= x_volumeSize.zw;
-
-  float x_volumeIn = step(abs(x_volumeUV.x-0.5), 0.5)*
-    step(abs(x_volumeUV.y-0.5), 0.5);
-
-  // Sample the volume at the world-space origin.
-  vec4 x_voxel = texture2D(x_volumeTexture, x_volumeUV);
+  // Sample the volume at the world-space origin `position` transformed into the
+  // volume's local space.
+  vec4 x_voxel = volume(x_volumeTexture, x_volumeTile,
+    vec3(inverse(x_volumeTransform)*position).xzy);
 
   #if defined(USE_VERTEX_COLORS) || defined(USE_INSTANCED_COLOR)
     vColor.rgb = map(vColor.rgb+x_voxel.rgb,
       vec3(0), vec3(1), vec3(-0.2), vec3(1.4));
 
-    vColor = mix(vec4(1), vColor, x_volumeIn);
+    vColor = mix(vec4(1), vColor, x_voxel.w);
   #endif
 
-  x_voxel = smoothstep(x_volumeRange.y, x_volumeRange.x, x_voxel);
+  x_voxel.xyz = smoothstep(x_volumeRamp.y, x_volumeRamp.x, x_voxel.xyz);
 
   // Swap `position` back, from origin, to `aPosition` scaled by volume sample.
-  position = vec4(aPosition*
-      map(x_volumeIn*x_voxel.rgb, vec3(0), vec3(1), vec3(0), vec3(1)),
-    1);
+  // @todo Clamp position to the volume, by sampling gradient or random samples?
+  position = vec4(aPosition*x_voxel.rgb*x_voxel.w, 1);
 
   // Reapply transformations to `position`.
   #ifdef USE_DISPLACEMENT_MAP

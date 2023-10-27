@@ -13,13 +13,15 @@ import { reduce } from '@epok.tech/fn-lists/reduce';
 import { range } from '@epok.tech/fn-lists/range';
 import { wrap } from '@epok.tech/fn-lists/wrap';
 
-import * as inVolume from './in-volume-glsl';
+import * as shapeInVolume from './shape-in-volume';
 
 const {
     max, abs, floor, round, sqrt, sin, cos, PI: pi, TAU: tau = pi*2
   } = Math;
 
-const random = new Random(0x67229302);
+const query = new URLSearchParams(location.search);
+
+const random = new Random(parseInt(query.get('seed') ?? '0x67229302'));
 const randomFloat = () => random.float();
 const randomInt = () => random.int();
 
@@ -48,13 +50,18 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       renderer.loadScene(gltfURL(u), gltfLoading),
     [
       new URL('../media/humanoid.glb', import.meta.url),
-      // new URL('../media/cube.glb', import.meta.url),
-      // new URL('../media/icosahedron.glb', import.meta.url), // white?
-      // new URL('../media/sphere.glb', import.meta.url), // white?
-      // new URL('../media/dodecahedron.glb', import.meta.url), // missing?
-      // new URL('../media/octahedron.glb', import.meta.url), // white?
-      new URL('../media/tetrahedron.glb', import.meta.url),
-      // new URL('../media/soccer.glb', import.meta.url) // white?
+      new URL('../media/cube.glb', import.meta.url),
+      // new URL('../media/tetrahedron.glb', import.meta.url),
+      // @todo Why is this white? Might be broken normals, tangents, even UVs?
+      // new URL('../media/icosahedron.glb', import.meta.url),
+      // @todo Why is this white? Might be broken normals, tangents, even UVs?
+      // new URL('../media/sphere.glb', import.meta.url),
+      // @todo Why is this white? Might be broken normals, tangents, even UVs?
+      // new URL('../media/octahedron.glb', import.meta.url),
+      // @todo Why is this white? Might be broken normals, tangents, even UVs?
+      // new URL('../media/soccer.glb', import.meta.url),
+      // @todo Why is this not appearing?
+      // new URL('../media/dodecahedron.glb', import.meta.url)
     ],
     0));
 
@@ -89,7 +96,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   });
 
   const backgroundTexture = context
-    .texture2D({ data: [8, 8, 8, 0], width: 1, height: 1 });
+    .texture2D({ data: [3, 3, 3, 0], width: 1, height: 1 });
 
   const skybox = renderer.skybox({ texture: skyTexture, backgroundTexture });
   const reflector = renderer.reflectionProbe();
@@ -102,10 +109,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const volume = renderer.add(renderer.entity());
   const volumeTexture = context.texture2D(volumeImg);
-  const { width: volumeLayerX, height: volumeLayerY } = volumeTexture;
-  const volumeSize = [volumeLayerX, volumeLayerY, 8, 8];
 
-  // volume.transform.set({ scale: range(3, 0.8) });
   volume.transform.set({ scale: range(3, 1.3) });
 
   const volumeBounds = [
@@ -126,12 +130,12 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   humanoid.root.transform.set({ scale: range(3, 1.2), position: [0, -0.32, 0] });
 
   const shapeMaterial = renderer.material({
-    ...inVolume,
+    ...shapeInVolume,
     uniforms: {
       x_volumeTexture: volumeTexture,
-      x_volumeSize: volumeSize,
+      x_volumeTile: [8, 8],
       x_volumeTransform: volume.transform.modelMatrix,
-      x_volumeRange: [0, 3e-2]
+      x_volumeRamp: [0, 3e-2]
     },
     castShadows: true, receiveShadows: true, metallic: 1, roughness: 0.3
   });
@@ -153,12 +157,14 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       q[3] *= tau;
       (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(q, q);
 
-      (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 2e-2);
+      // (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 2e-2);
+      (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 5e-2);
       to.instances ??= a.length;
 
       return to;
     },
-    range(1e4), {});
+    // range(1e4), {});
+    range(1e3), {});
 
   shape.entities.forEach((e) => {
     const g = e.getComponent('Geometry');
