@@ -76,6 +76,9 @@ __metadata:
     assert: ^2.0.0
     glsl-inverse: ^1.0.0
     glsl-map: ^1.0.1
+    glsl-noise: ^0.0.0
+    glsl-rotate: ^2.0.0
+    glsl-sdf-normal: ^1.0.0
     parcel: ^2.9.3
     parse-hdr: ^1.0.0
     path-browserify: ^1.0.0
@@ -2412,6 +2415,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"glsl-noise@npm:^0.0.0":
+  version: 0.0.0
+  resolution: "glsl-noise@npm:0.0.0"
+  checksum: 07986663451963c90f8177f0a7d79a897ce27ad47841bfae6833647803ce7b8b65c8c18b8aecc576f1fc8e67ae6c8b5e5e1501b604cf3b1e9855c639e739e2c3
+  languageName: node
+  linkType: hard
+
 "glsl-resolve@npm:0.0.1":
   version: 0.0.1
   resolution: "glsl-resolve@npm:0.0.1"
@@ -2419,6 +2429,20 @@ __metadata:
     resolve: ^0.6.1
     xtend: ^2.1.2
   checksum: 8bc83f4c56c06d771761c32042fff8fed60f4bcc320d5fc3ec86cf115eb3c0bb5bacf3ca5f80cb88133399734d02c65788845bca9eb90244e08c41e98ddb0275
+  languageName: node
+  linkType: hard
+
+"glsl-rotate@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "glsl-rotate@npm:2.0.0"
+  checksum: cdd26ab987423cf63edcade8451b2e9484cb587a573928af4cac81a72cbbb9445f726cb660aa8887cbd3af41672b4e2c2485c3203933cc57cec1c6ff719e0f75
+  languageName: node
+  linkType: hard
+
+"glsl-sdf-normal@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "glsl-sdf-normal@npm:1.0.0"
+  checksum: 58c3f5c5101eab889bc5edc9eebeaa0a7fe15be3556361d1c3cbba9d2df3a0eb647992f97fb7c5920fdb230b8c5ff9dde3545a96d2c4e5d9c20bdea12879c967
   languageName: node
   linkType: hard
 

@@ -39,7 +39,8 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const renderer = getRenderer({ ctx: context, pauseOnBlur });
   const pipelineShaders = renderer.shaders.pipeline;
 
-  console.log('pipeline', pipelineShaders);
+  // console.log('pipeline', pipelineShaders);
+  console.log('shape-in-volume', shapeInVolume.vert, shapeInVolume.frag);
 
   const { skyHDR, volumeImg } = await load({
     skyHDR: { arrayBuffer: new URL('../media/sky-0.hdr', import.meta.url)+'' },
@@ -76,7 +77,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const ease = {
     eps: 1e-4,
-    orbit: 5e-2, dof: 4e-2, exposure: 4e-2, ramp: 2e-2
+    orbit: 5e-2, dof: 4e-2, exposure: 4e-2, ramp: 1e-2
   };
 
   const orbit = renderer.orbiter({
@@ -138,12 +139,15 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     .set({ scale: range(3, 1.2), position: [0, -0.32, 0] });
 
   const shapeMaterial = renderer.material({
-    ...shapeInVolume,
+    // ...shapeInVolume,
+    vert: '#define x_orientToVolume\n'+shapeInVolume.vert,
+    frag: shapeInVolume.frag,
     uniforms: {
       x_volumeTexture: volumeTexture,
       x_volumeTile: [8, 8],
       x_volumeTransform: volume.transform.modelMatrix,
-      x_volumeRamp: subN2(null, [0, 3e-2], 3e-2)
+      x_volumeRamp: subN2(null, [0, 3e-2], 3e-2),
+      x_volumeNormalRange: 0.1
     },
     castShadows: true, receiveShadows: true, metallic: 0.9, roughness: 0.5
   });
@@ -158,16 +162,20 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     const shapeInstances = reduce((to, _, i, a) => {
         const { radius: r, centre: c } = wrap(randomInt(), volumeBounds);
         const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
-        const q = map(randomFloat, range(4), 0);
+        // const q = map(randomFloat, range(4), 0);
 
         maddN3(p, p, (randomFloat()**0.6)*r, c);
         (to.offsets ??= { data: a, divisor: 1 }).data[i] = p;
 
-        q[3] *= tau;
-        (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(q, q);
+        // q[3] *= tau;
+        // (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(q, q);
 
-        // (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 2e-2);
-        (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3, 5e-2);
+        (to.scales ??= { data: [], divisor: 1 })
+          // .data[i] = range(3, 2e-2);
+          // .data[i] = range(3, 5e-2);
+          // .data[i] = range(3, mix(1e-2, 3e-2, randomFloat()));
+          .data[i] = range(3, mix(3e-2, 6e-2, randomFloat()));
+
         to.instances ??= a.length;
 
         return to;
