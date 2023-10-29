@@ -18,7 +18,7 @@ void main() {
 uniform sampler2D x_volumeTexture;
 uniform vec2 x_volumeTile;
 uniform mat4 x_volumeTransform;
-uniform vec2 x_volumeRamp;
+uniform vec4 x_volumeRamp;
 uniform vec4 x_colors[2];
 uniform vec4 x_colorNoise;
 uniform vec2 x_time;
@@ -29,8 +29,9 @@ uniform vec2 x_time;
 
 #pragma glslify: x_volume = require(../volume)
 
-#ifdef x_orientToVolume
-  uniform float x_volumeNormalRange;
+#if defined(x_orientToVolume) || defined(x_clampToVolume)
+  // Scales for sampling normals and distance to clamp.
+  uniform vec2 x_volumeSurface;
 
   // #pragma glslify: x_lookAt = require(../look-at)
   #pragma glslify: x_rotationByAxes = require(../rotation-by-axes)
@@ -83,8 +84,8 @@ void main() {
   vec4 x_voxel = x_volume(x_volumeTexture, x_volumeTile,
     vec3(x_inverse(x_volumeTransform)*position));
 
-  #ifdef x_orientToVolume
-    vec3 x_volumeNormal = x_toVolumeNormal(position.xyz, x_volumeNormalRange);
+  #if defined(x_orientToVolume) || defined(x_clampToVolume)
+    vec3 x_volumeNormal = x_toVolumeNormal(position.xyz, x_volumeSurface.x);
     // mat3 x_volumeOrient = x_lookAt(x_volumeNormal);
     mat4 x_volumeOrient = x_rotationByAxes(x_volumeNormal);
   #endif
@@ -96,10 +97,14 @@ void main() {
   vColor *= mix(x_colors[0], x_colors[1],
     x_noise(vec4(position.xyz, x_time.y)*x_colorNoise));
 
-  x_voxel.xyz = smoothstep(x_volumeRamp.y, x_volumeRamp.x, x_voxel.xyz);
+  // Ramp the voxel by its distance from the volume, map it to a scale vector.
+  vec3 x_scale = x_voxel.xyz*x_voxel.a;
+
+  x_scale = x_map(smoothstep(x_volumeRamp.y, x_volumeRamp.x, x_scale),
+    vec3(0), vec3(1), vec3(x_volumeRamp.z), vec3(x_volumeRamp.w));
+
   // Swap `position` back to `aPosition` scaled by the origin's volume sample.
-  // @todo Clamp position in the volume by moving by `x_volumeNormal*x_voxel.x`?
-  position = vec4(aPosition*x_voxel.rgb*x_voxel.a, 1);
+  position = vec4(aPosition*x_scale, 1);
 
   #ifdef x_orientToVolume
     // Orient the geometry to look along the volume normal.
@@ -107,6 +112,10 @@ void main() {
     // normal = x_volumeOrient*normal;
     position = x_volumeOrient*position;
     normal = vec3(x_volumeOrient*vec4(normal, 0));
+  #endif
+  #ifdef x_clampToVolume
+    // Clamp position within the volume, move it back along the volume normal.
+    position.xyz -= x_volumeNormal*max(x_voxel.xyz*x_volumeSurface.y, 0.0);
   #endif
 
   // Reapply transformations to `position`.

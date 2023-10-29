@@ -48,7 +48,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const timer = toTimer({ step: '-' });
 
   // console.log('pipeline', pipelineShaders);
-  console.log('shape-in-volume', shapeInVolume.vert, shapeInVolume.frag);
+  // console.log('shape-in-volume', shapeInVolume.vert, shapeInVolume.frag);
 
   const { skyHDR, volumeImg } = await load({
     skyHDR: { arrayBuffer: new URL('../media/sky-0.hdr', import.meta.url)+'' },
@@ -85,21 +85,21 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const ease = {
     eps: 1e-4,
-    orbit: 5e-2, dof: 4e-2, exposure: 4e-2, ramp: 1e-2
+    orbit: 5e-2, dof: 3e-2, exposure: 4e-2, ramp: 1e-2
   };
 
   const orbit = renderer.orbiter({
-    element: canvas, target: [0, 0.1, 0.25], position: [-0.1, 0.3, 0.1],
-    minDistance: 0.3, maxDistance: 1.5, easing: ease.orbit
+    element: canvas, target: [0, 0.1, 0.25], position: [-0.1, -0.1, 0],
+    minDistance: 0.2, maxDistance: 1.5, easing: ease.orbit
   });
 
   const fog = range(3, 30/255);
 
   const post = renderer.postProcessing({
     fxaa: true, ssao: true,
-    dof: true, dofFocusDistance: 0,
+    dof: true, dofFocusDistance: orbit.minDistance*0.5,
     bloom: true, bloomThreshold: 1, bloomRadius: 0.5,
-    fog: true, fogColor: fog, fogDensity: 0.1, fogStart: 10.50,
+    fog: true, fogColor: fog, fogDensity: 0.3, fogStart: orbit.minDistance,
     inscatteringCoeffs: range(3, 0.3)
   });
 
@@ -152,14 +152,15 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const shapeMaterial = renderer.material({
     // ...shapeInVolume,
-    vert: '#define x_orientToVolume\n'+shapeInVolume.vert,
+    vert: '#define x_orientToVolume\n#define x_clampToVolume\n'+
+      shapeInVolume.vert,
     frag: shapeInVolume.frag,
     uniforms: {
       x_volumeTexture: volumeTexture,
       x_volumeTile: [8, 8],
       x_volumeTransform: volume.transform.modelMatrix,
-      x_volumeRamp: subN2(null, [0, 3e-2], 3e-2),
-      x_volumeNormalRange: 0.1,
+      x_volumeRamp: subN2(null, [0, 3e-2, 0.2, 1], 3e-2),
+      x_volumeSurface: [0.1, 30],
       x_colors: map((v) => divN3(v, v, 255),
         [[146, 129, 201, 1], [210, 134, 104, 1]], 0),
       x_colorNoise: [3, 3, 3, 3e-3],
@@ -179,18 +180,18 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     const shapeInstances = reduce((to, _, i, a) => {
         const { radius: r, centre: c } = wrap(randomInt(), volumeBounds);
         const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
-        // const q = map((v) => v*randomFloat(), [1, 1, 1, tau], 0);
 
-        (to.offsets ??= { data: a, divisor: 1 })
-          .data[i] = maddN3(p, p, (randomFloat()**0.6)*r, c);
+        (to.offsets ??= { data: a, divisor: 1 }).data[i] = maddN3(null,
+          p, (randomFloat()**0.6)*r, c);
 
-        // (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(q, q);
+        // (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(null,
+        //   map((v) => v*randomFloat(), [1, 1, 1, tau], 0));
 
-        (to.scales ??= { data: [], divisor: 1 })
-          // .data[i] = range(3, 2e-2);
-          // .data[i] = range(3, 5e-2);
-          // .data[i] = range(3, mix(1e-2, 3e-2, randomFloat()));
-          .data[i] = range(3, mix(3e-2, 6e-2, randomFloat()));
+        (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3,
+          // 2e-2);
+          // 5e-2);
+          // mix(1e-2, 3e-2, randomFloat()));
+          mix(3e-2, 6e-2, randomFloat()));
 
         to.instances ??= a.length;
 
@@ -243,12 +244,12 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   addEventListener('resize', resize);
 
   orbit.set({
-    distance: mix(orbit.minDistance, orbit.maxDistance, 0.2),
+    distance: mix(orbit.minDistance, orbit.maxDistance, 0.25),
     lat: 10, lon: -70
   });
 
   context.frame(() => {
-    const { eps, dof: easeD, exposure: easeE, ramp: easeR } = ease;
+    const { eps, dof: easeDOF, exposure: easeExpose, ramp: easeRamp } = ease;
     const d = orbit.distance;
     const dof = post.dofFocusDistance;
     const expose = camera.exposure;
@@ -256,9 +257,9 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     const ramp = shapeUniforms.x_volumeRamp;
     const [r0] = ramp;
 
-    (abs(d-dof) > eps) && post.set({ dofFocusDistance: mix(dof, d, easeD) });
-    (1-expose > eps) && camera.set({ exposure: mix(expose, 1, easeE) });
-    (0-r0 > eps) && addN2(null, ramp, mix(r0, 0, easeR)-r0);
+    (abs(d-dof) > eps) && post.set({ dofFocusDistance: mix(dof, d, easeDOF) });
+    (1-expose > eps) && camera.set({ exposure: mix(expose, 1, easeExpose) });
+    (0-r0 > eps) && addN2(null, ramp, mix(r0, 0, easeRamp)-r0);
 
     setC2(shapeUniforms.x_time, toTimer(timer).time, timer.dt);
 
