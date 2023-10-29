@@ -1,17 +1,31 @@
 // ...
 #pragma swap-at
+#if defined(USE_VERTEX_COLORS) || defined(USE_INSTANCED_COLOR)
+varying vec4 vColor;
+#endif
+#pragma swap-by
+// Custom shader start.
+varying vec4 vColor;
+// Custom shader end. Doesn't include match.
+#pragma swap-to
+// ...
+#pragma swap-at
 void main() {
   vec4 position = vec4(aPosition, 1.0);
 #pragma swap-by
-// Custom vertex shader start.
+// Custom shader start.
 
 uniform sampler2D x_volumeTexture;
 uniform vec2 x_volumeTile;
 uniform mat4 x_volumeTransform;
 uniform vec2 x_volumeRamp;
+uniform vec4 x_colors[2];
+uniform vec4 x_colorNoise;
+uniform vec2 x_time;
 
 #pragma glslify: x_map = require(glsl-map)
 #pragma glslify: x_inverse = require(glsl-inverse)
+#pragma glslify: x_noise = require(glsl-noise/simplex/4d)
 
 #pragma glslify: x_volume = require(../volume)
 
@@ -31,7 +45,8 @@ void main() {
    * ...
    */
   vec4 position = vec4(0, 0, 0, 1);
-  // Custom vertex shader end. Doesn't include match.
+
+  // Custom shader end. Doesn't include match.
 #pragma swap-to
 // ...
 #pragma swap-at
@@ -45,7 +60,7 @@ void main() {
 #pragma swap-at
   gl_Position = uProjectionMatrix * uViewMatrix * skinMat * position;
 #pragma swap-by
-  // Custom vertex shader start.
+  // Custom shader start.
   #endif
 
   /**
@@ -74,18 +89,17 @@ void main() {
     mat4 x_volumeOrient = x_rotationByAxes(x_volumeNormal);
   #endif
 
-  #if defined(USE_VERTEX_COLORS) || defined(USE_INSTANCED_COLOR)
-    vColor.rgb = x_map(vColor.rgb+x_voxel.rgb,
-      vec3(0), vec3(1), vec3(-0.2), vec3(1.4));
-
-    vColor = mix(vec4(1), vColor, x_voxel.w);
+  #if !defined(USE_VERTEX_COLORS) && !defined(USE_INSTANCED_COLOR)
+    vColor = vec4(1);
   #endif
 
-  x_voxel.xyz = smoothstep(x_volumeRamp.y, x_volumeRamp.x, x_voxel.xyz);
+  vColor *= mix(x_colors[0], x_colors[1],
+    x_noise(vec4(position.xyz, x_time.y)*x_colorNoise));
 
+  x_voxel.xyz = smoothstep(x_volumeRamp.y, x_volumeRamp.x, x_voxel.xyz);
   // Swap `position` back to `aPosition` scaled by the origin's volume sample.
   // @todo Clamp position to the volume, by sampling gradient or random samples?
-  position = vec4(aPosition*x_voxel.rgb*x_voxel.w, 1);
+  position = vec4(aPosition*x_voxel.rgb*x_voxel.a, 1);
 
   #ifdef x_orientToVolume
     // Orient the geometry to look along the volume normal.
@@ -116,6 +130,6 @@ void main() {
   #endif
 
 #ifdef USE_SKIN
-  // Custom vertex shader end. Includes match:$&
+  // Custom shader end. Includes match:$&
 #pragma swap-to
 // ...

@@ -1,1 +1,2 @@
-export vert from './vert';
+export vert from './vert.glsl';
+export frag from './frag.glsl';

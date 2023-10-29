@@ -2,8 +2,9 @@ import getContext from 'pex-context';
 import getRenderer from 'pex-renderer';
 import { load } from 'pex-io';
 import parseHDR from 'parse-hdr';
-import { setC3 } from '@thi.ng/vectors/setc';
+import { setC2, setC3 } from '@thi.ng/vectors/setc';
 import { mulN2, mulN3 } from '@thi.ng/vectors/muln';
+import { divN3 } from '@thi.ng/vectors/divn';
 import { subN2 } from '@thi.ng/vectors/subn';
 import { addN2 } from '@thi.ng/vectors/addn';
 import { maddN3 } from '@thi.ng/vectors/maddn';
@@ -14,6 +15,7 @@ import { map } from '@epok.tech/fn-lists/map';
 import { reduce } from '@epok.tech/fn-lists/reduce';
 import { range } from '@epok.tech/fn-lists/range';
 import { wrap } from '@epok.tech/fn-lists/wrap';
+import toTimer from '@epok.tech/fn-time';
 
 import * as shapeInVolume from './shape-in-volume';
 
@@ -24,6 +26,7 @@ const {
 const query = new URLSearchParams(location.search);
 
 const pauseOnBlur = !(query.get('pause-on-blur') === 'false');
+const shadows = parseInt(query.get('shadows') || 4, 10) || 0;
 
 const random = new Random(parseInt(query.get('seed') ?? '0x67229302'));
 const randomFloat = () => random.float();
@@ -36,8 +39,13 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const canvas = document.querySelector('canvas');
   const context = getContext({ canvas });
   const { gl, PixelFormat, Encoding } = context;
-  const renderer = getRenderer({ ctx: context, pauseOnBlur });
+
+  const renderer = getRenderer({
+    ctx: context, pauseOnBlur, shadowQuality: shadows
+  });
+
   const pipelineShaders = renderer.shaders.pipeline;
+  const timer = toTimer({ step: '-' });
 
   // console.log('pipeline', pipelineShaders);
   console.log('shape-in-volume', shapeInVolume.vert, shapeInVolume.frag);
@@ -71,7 +79,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     0));
 
   const camera = renderer.camera({
-    fov: pi*0.5, near: 1e-2, far: 1e2, fStop: 1, sensorFit: 'overscan',
+    fov: pi*0.5, near: 1e-2, far: 1e2, fStop: 1.6, sensorFit: 'overscan',
     exposure: 0
   });
 
@@ -81,14 +89,15 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   };
 
   const orbit = renderer.orbiter({
-    element: canvas, target: [0, 0.1, 0.18], position: [-0.1, 0.3, 0.1],
+    element: canvas, target: [0, 0.1, 0.25], position: [-0.1, 0.3, 0.1],
     minDistance: 0.3, maxDistance: 1.5, easing: ease.orbit
   });
 
   const post = renderer.postProcessing({
     fxaa: true, ssao: true,
     dof: true, dofFocusDistance: 0,
-    bloom: true, bloomThreshold: 1, bloomRadius: 0.5
+    bloom: true, bloomThreshold: 1, bloomRadius: 0.5,
+    fog: true, fogColor: range(3, 3/255)
   });
 
   const viewer = renderer.entity([camera, orbit, post]);
@@ -147,9 +156,14 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       x_volumeTile: [8, 8],
       x_volumeTransform: volume.transform.modelMatrix,
       x_volumeRamp: subN2(null, [0, 3e-2], 3e-2),
-      x_volumeNormalRange: 0.1
+      x_volumeNormalRange: 0.1,
+      x_colors: map((v) => divN3(v, v, 255),
+        [[146, 129, 201, 1], [210, 134, 104, 1]], 0),
+      x_colorNoise: [3, 3, 3, 3e-3],
+      x_time: [timer.time, timer.dt]
     },
-    castShadows: true, receiveShadows: true, metallic: 0.9, roughness: 0.5
+    castShadows: !!shadows, receiveShadows: !!shadows,
+    metallic: 0.9, roughness: 0.5
   });
 
   /**
@@ -162,12 +176,11 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     const shapeInstances = reduce((to, _, i, a) => {
         const { radius: r, centre: c } = wrap(randomInt(), volumeBounds);
         const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
-        // const q = map(randomFloat, range(4), 0);
+        // const q = map((v) => v*randomFloat(), [1, 1, 1, tau], 0);
 
-        maddN3(p, p, (randomFloat()**0.6)*r, c);
-        (to.offsets ??= { data: a, divisor: 1 }).data[i] = p;
+        (to.offsets ??= { data: a, divisor: 1 })
+          .data[i] = maddN3(p, p, (randomFloat()**0.6)*r, c);
 
-        // q[3] *= tau;
         // (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(q, q);
 
         (to.scales ??= { data: [], divisor: 1 })
@@ -203,7 +216,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const pointLights = map(({ color, position }) =>
       renderer.add(renderer.entity([
-        renderer.pointLight({ intensity: 10, castShadows: true, color }),
+        renderer.pointLight({ intensity: 5, castShadows: !!shadows, color }),
         renderer.transform({ position })
       ])),
     [
@@ -211,6 +224,10 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       { color: [0, 0, 1, 1], position: [-1, 1, 1] },
       { color: [1, 0, 1, 1], position: [1, 1, -1] },
       { color: [1, 0, 1, 1], position: [1, 1, 1] }
+      // { color: [1, 1, 1, 1], position: [-1, 1, -1] },
+      // { color: [1, 1, 1, 1], position: [-1, 1, 1] },
+      // { color: [1, 1, 1, 1], position: [1, 1, -1] },
+      // { color: [1, 1, 1, 1], position: [1, 1, 1] }
     ],
     0);
 
@@ -236,12 +253,15 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     const d = orbit.distance;
     const dof = post.dofFocusDistance;
     const expose = camera.exposure;
-    const ramp = shapeMaterial.uniforms.x_volumeRamp;
+    const shapeUniforms = shapeMaterial.uniforms;
+    const ramp = shapeUniforms.x_volumeRamp;
     const [r0] = ramp;
 
     (abs(d-dof) > eps) && post.set({ dofFocusDistance: mix(dof, d, easeD) });
     (1-expose > eps) && camera.set({ exposure: mix(expose, 1, easeE) });
     (0-r0 > eps) && addN2(null, ramp, mix(r0, 0, easeR)-r0);
+
+    setC2(shapeUniforms.x_time, toTimer(timer).time, timer.dt);
 
     renderer.draw();
   });

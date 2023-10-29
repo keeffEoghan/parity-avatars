@@ -14,7 +14,7 @@ vec4 volume(sampler2D voxels, vec2 tile, in vec3 at) {
   vec4 voxel = texture2D(voxels, uv);
   vec2 inside = 1.0-step(0.5, abs(uv-0.5));
 
-  voxel.w *= inside.x*inside.y;
+  voxel.a *= inside.x*inside.y;
 
   return voxel;
 }

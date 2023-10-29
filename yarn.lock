@@ -60,11 +60,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@epok.tech/fn-time@npm:^0.2.1":
+  version: 0.2.1
+  resolution: "@epok.tech/fn-time@npm:0.2.1"
+  checksum: 08c6bc1abcd39c7a01be281b398b70e41a535c7af4fe98a6c18aeb4457e89ca7068e2d3ebf422846c20633b7a00fc3f7342ad4f693c796b5f64e3d65006977a7
+  languageName: node
+  linkType: hard
+
 "@epok.tech/parity-avatars@workspace:.":
   version: 0.0.0-use.local
   resolution: "@epok.tech/parity-avatars@workspace:."
   dependencies:
     "@epok.tech/fn-lists": ^0.1.4
+    "@epok.tech/fn-time": ^0.2.1
     "@parcel/core": ^2.9.3
     "@parcel/transformer-glsl": 2.9.3
     "@parcel/transformer-inline-string": 2.9.3
