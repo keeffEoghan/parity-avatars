@@ -97,7 +97,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     fxaa: true, ssao: true,
     dof: true, dofFocusDistance: 0,
     bloom: true, bloomThreshold: 1, bloomRadius: 0.5,
-    fog: true, fogColor: range(3, 3/255)
+    fog: true, fogColor: range(3, 3/255), fogDensity: 1, fogStart: 0.6
   });
 
   const viewer = renderer.entity([camera, orbit, post]);
@@ -163,7 +163,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       x_time: [timer.time, timer.dt]
     },
     castShadows: !!shadows, receiveShadows: !!shadows,
-    metallic: 0.9, roughness: 0.5
+    metallic: 0.7, roughness: 0.3
   });
 
   /**
@@ -220,14 +220,10 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
         renderer.transform({ position })
       ])),
     [
-      { color: [0, 0, 1, 1], position: [-1, 1, -1] },
+      { color: [0, 0, 1, 1], position: [-1, -1, -1] },
       { color: [0, 0, 1, 1], position: [-1, 1, 1] },
-      { color: [1, 0, 1, 1], position: [1, 1, -1] },
+      { color: [1, 0, 1, 1], position: [1, -1, -1] },
       { color: [1, 0, 1, 1], position: [1, 1, 1] }
-      // { color: [1, 1, 1, 1], position: [-1, 1, -1] },
-      // { color: [1, 1, 1, 1], position: [-1, 1, 1] },
-      // { color: [1, 1, 1, 1], position: [1, 1, -1] },
-      // { color: [1, 1, 1, 1], position: [1, 1, 1] }
     ],
     0);
 
