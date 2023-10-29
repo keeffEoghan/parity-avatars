@@ -19,13 +19,18 @@ uniform sampler2D x_volumeTexture;
 uniform vec2 x_volumeTile;
 uniform mat4 x_volumeTransform;
 uniform vec4 x_volumeRamp;
-uniform vec4 x_colors[2];
-uniform vec4 x_colorNoise;
-uniform vec2 x_time;
 
 #pragma glslify: x_map = require(glsl-map)
 #pragma glslify: x_inverse = require(glsl-inverse)
-#pragma glslify: x_noise = require(glsl-noise/simplex/4d)
+
+#if !defined(DEPTH_PRE_PASS_ONLY) && !defined(DEPTH_PASS_ONLY)
+  uniform vec4 x_colors[2];
+  uniform vec4 x_colorNoise;
+  // Time now, step, looped.
+  uniform vec3 x_time;
+
+  #pragma glslify: x_noise = require(glsl-noise/simplex/4d)
+#endif
 
 #pragma glslify: x_volume = require(../volume)
 
@@ -93,9 +98,11 @@ void main() {
   #if !defined(USE_VERTEX_COLORS) && !defined(USE_INSTANCED_COLOR)
     vColor = vec4(1);
   #endif
-
-  vColor *= mix(x_colors[0], x_colors[1],
-    x_noise(vec4(position.xyz, x_time.y)*x_colorNoise));
+  #if !defined(DEPTH_PRE_PASS_ONLY) && !defined(DEPTH_PASS_ONLY)
+    vColor *= mix(x_colors[0], x_colors[1],
+      // @todo Make the noise properly symmetrical, expand on this `abs` idea.
+      x_noise(abs(vec4(position.xyz, x_time.z)*x_colorNoise)));
+  #endif
 
   // Ramp the voxel by its distance from the volume, map it to a scale vector.
   vec3 x_scale = x_voxel.xyz*x_voxel.a;

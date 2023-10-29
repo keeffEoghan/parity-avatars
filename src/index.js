@@ -45,7 +45,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   });
 
   const pipelineShaders = renderer.shaders.pipeline;
-  const timer = toTimer({ step: '-' });
+  const timer = toTimer({ step: '-', loop: 1e5 });
 
   // console.log('pipeline', pipelineShaders);
   // console.log('shape-in-volume', shapeInVolume.vert, shapeInVolume.frag);
@@ -159,12 +159,13 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       x_volumeTexture: volumeTexture,
       x_volumeTile: [8, 8],
       x_volumeTransform: volume.transform.modelMatrix,
-      x_volumeRamp: subN2(null, [0, 3e-2, 0.2, 1], 3e-2),
+      // Starting the ramp off below 0, to grow the shapes in over time.
+      x_volumeRamp: [-3e-2, 0, 0.2, 1],
       x_volumeSurface: [0.1, 30],
       x_colors: map((v) => divN3(v, v, 255),
-        [[146, 129, 201, 1], [210, 134, 104, 1]], 0),
-      x_colorNoise: [3, 3, 3, 3e-3],
-      x_time: [timer.time, timer.dt]
+        [[199, 134, 75, 1], [12, 24, 145, 1]], 0),
+      x_colorNoise: [4, 4, 4, 3e-4],
+      x_time: range(3, 0)
     },
     castShadows: !!shadows, receiveShadows: !!shadows,
     metallic: 0.7, roughness: 0.3
@@ -261,7 +262,9 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     (1-expose > eps) && camera.set({ exposure: mix(expose, 1, easeExpose) });
     (0-r0 > eps) && addN2(null, ramp, mix(r0, 0, easeRamp)-r0);
 
-    setC2(shapeUniforms.x_time, toTimer(timer).time, timer.dt);
+    const { time, dt, loop } = toTimer(timer);
+
+    setC3(shapeUniforms.x_time, time, dt, abs(((time+loop)%(loop*2))-loop));
 
     renderer.draw();
   });
