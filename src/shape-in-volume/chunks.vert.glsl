@@ -98,7 +98,7 @@ void main() {
 
   x_voxel.xyz = smoothstep(x_volumeRamp.y, x_volumeRamp.x, x_voxel.xyz);
   // Swap `position` back to `aPosition` scaled by the origin's volume sample.
-  // @todo Clamp position to the volume, by sampling gradient or random samples?
+  // @todo Clamp position in the volume by moving by `x_volumeNormal*x_voxel.x`?
   position = vec4(aPosition*x_voxel.rgb*x_voxel.a, 1);
 
   #ifdef x_orientToVolume

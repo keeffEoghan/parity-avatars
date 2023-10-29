@@ -93,11 +93,14 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     minDistance: 0.3, maxDistance: 1.5, easing: ease.orbit
   });
 
+  const fog = range(3, 30/255);
+
   const post = renderer.postProcessing({
     fxaa: true, ssao: true,
     dof: true, dofFocusDistance: 0,
     bloom: true, bloomThreshold: 1, bloomRadius: 0.5,
-    fog: true, fogColor: range(3, 3/255), fogDensity: 1, fogStart: 0.6
+    fog: true, fogColor: fog, fogDensity: 0.1, fogStart: 10.50,
+    inscatteringCoeffs: range(3, 0.3)
   });
 
   const viewer = renderer.entity([camera, orbit, post]);
@@ -113,7 +116,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   });
 
   const backgroundTexture = context
-    .texture2D({ data: [3, 3, 3, 0], width: 1, height: 1 });
+    .texture2D({ data: [...fog, 1], width: 1, height: 1 });
 
   const skybox = renderer.skybox({ texture: skyTexture, backgroundTexture });
   const reflector = renderer.reflectionProbe();
