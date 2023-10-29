@@ -82,6 +82,7 @@ __metadata:
     "@thi.ng/random": ^3.6.10
     "@thi.ng/vectors": ^7.7.22
     assert: ^2.0.0
+    geom-normals: ^2.0.1
     glsl-inverse: ^1.0.0
     glsl-map: ^1.0.1
     glsl-noise: ^0.0.0
@@ -98,6 +99,7 @@ __metadata:
     postcss-import: ^15.1.0
     postcss-nesting: ^12.0.1
     postcss-url: ^10.1.3
+    primitive-geometry: ^2.9.1
     process: ^0.11.10
     typescript: ^5.2.2
   languageName: unknown
@@ -2322,6 +2324,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"geom-normals@npm:^2.0.1":
+  version: 2.0.1
+  resolution: "geom-normals@npm:2.0.1"
+  dependencies:
+    pex-math: ^4.0.0-alpha.3
+    pex-random: ^2.0.0-alpha.1
+  checksum: ab9f7361203f0510fe4b9756caa1911bede9d3300cf52e2fdfb4a80c4aece30bd5a86aef5c188517cab34cbb49fb1b7d39e18ab0e3e6a34e17409afe8c620031
+  languageName: node
+  linkType: hard
+
 "get-intrinsic@npm:^1.0.2, get-intrinsic@npm:^1.1.1, get-intrinsic@npm:^1.1.3, get-intrinsic@npm:^1.2.0, get-intrinsic@npm:^1.2.1":
   version: 1.2.1
   resolution: "get-intrinsic@npm:1.2.1"
@@ -3944,6 +3956,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"pex-math@npm:^4.0.0-alpha.3":
+  version: 4.0.0-alpha.5
+  resolution: "pex-math@npm:4.0.0-alpha.5"
+  checksum: 4bc51c2c013a1579ee8cdf7bcd156e3d63f3c51c910d90687d725da29df85893e038ce33fd4860ceeb3cbee107622ca928c7be7d395e5f1de457d77f83aba5f0
+  languageName: node
+  linkType: hard
+
 "pex-random@npm:^1.0.1":
   version: 1.0.1
   resolution: "pex-random@npm:1.0.1"
@@ -3951,6 +3970,16 @@ __metadata:
     seedrandom: ^2.3.10
     simplex-noise: 2.1.1
   checksum: 109d5bd64b0451235a94e4462c98c6b74f7c574d955eac172f39c93b8ca1bf168d1b14a38e63fab20fb563ed69d1c9114f0548735731738554b1c0fda2547612
+  languageName: node
+  linkType: hard
+
+"pex-random@npm:^2.0.0-alpha.1":
+  version: 2.0.0-alpha.2
+  resolution: "pex-random@npm:2.0.0-alpha.2"
+  dependencies:
+    seedrandom: ^3.0.5
+    simplex-noise: 4.0.1
+  checksum: 75f50cbf3aed14bd36048a8635c974fc4c72723682f7be813c57c65c5000b673100224c17c405ec8c999b55c28c98630bc0cd32f91a9c1a781b53e45c740c73d
   languageName: node
   linkType: hard
 
@@ -4105,6 +4134,13 @@ __metadata:
     posthtml-parser: ^0.11.0
     posthtml-render: ^3.0.0
   checksum: 8b9b9d27bd2417d6b5b7d408000b23316c3c4d2a2d0ea62080a8fbec5654cc7376ea9d6317b290c030d616142144a8ca0a96ffe1e919493e3eac17442d362596
+  languageName: node
+  linkType: hard
+
+"primitive-geometry@npm:^2.9.1":
+  version: 2.9.1
+  resolution: "primitive-geometry@npm:2.9.1"
+  checksum: 8f3901195a4f6e2d38a87435b500b8e467d21c1b5223abc0dde4e41d41c8f31901ca1cf9481f602a9552acb0a61ec85461fceef5028ab8e91fe70725860239e9
   languageName: node
   linkType: hard
 
@@ -4314,6 +4350,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"seedrandom@npm:^3.0.5":
+  version: 3.0.5
+  resolution: "seedrandom@npm:3.0.5"
+  checksum: 728b56bc3bc1b9ddeabd381e449b51cb31bdc0aa86e27fcd0190cea8c44613d5bcb2f6bb63ed79f78180cbe791c20b8ec31a9627f7b7fc7f476fd2bdb7e2da9f
+  languageName: node
+  linkType: hard
+
 "semver@npm:^6.0.0":
   version: 6.3.1
   resolution: "semver@npm:6.3.1"
@@ -4411,6 +4454,13 @@ __metadata:
   version: 2.1.1
   resolution: "simplex-noise@npm:2.1.1"
   checksum: 6ebcce2652b7eb18191c1e350931c4b6d1cdb71bc1ad922b7d58a2f03432bcc2a17c4818cd8a6409dda4be892d99d8c80c09c4aa9f5c9db040fc292c2bf36ef8
+  languageName: node
+  linkType: hard
+
+"simplex-noise@npm:4.0.1":
+  version: 4.0.1
+  resolution: "simplex-noise@npm:4.0.1"
+  checksum: b5458713337129016ae71182e20d2e2e0d01bb62c78cf180276dafe8a59bf1814a66aedd0dfc9bbb70cc549a9bc02f1c9773e4f222a2cff4692cd48e7a2b348b
   languageName: node
   linkType: hard
 

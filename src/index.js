@@ -2,17 +2,33 @@ import getContext from 'pex-context';
 import getRenderer from 'pex-renderer';
 import { load } from 'pex-io';
 import parseHDR from 'parse-hdr';
+
+import toCube from 'primitive-geometry/src/cube';
+import toRoundedCube from 'primitive-geometry/src/rounded-cube';
+import toSphere from 'primitive-geometry/src/sphere';
+import toIcosphere from 'primitive-geometry/src/icosphere';
+import toEllipsoid from 'primitive-geometry/src/ellipsoid';
+import toCylinder from 'primitive-geometry/src/cylinder';
+import toCone from 'primitive-geometry/src/cone';
+import toCapsule from 'primitive-geometry/src/capsule';
+import toTorus from 'primitive-geometry/src/torus';
+import toTetrahedron from 'primitive-geometry/src/tetrahedron';
+import toIcosahedron from 'primitive-geometry/src/icosahedron';
+
+import toNormals from 'geom-normals';
 import { setC2, setC3 } from '@thi.ng/vectors/setc';
 import { mulN2, mulN3 } from '@thi.ng/vectors/muln';
 import { divN3 } from '@thi.ng/vectors/divn';
 import { subN2 } from '@thi.ng/vectors/subn';
-import { addN2 } from '@thi.ng/vectors/addn';
+import { addN2, addN3 } from '@thi.ng/vectors/addn';
 import { maddN3 } from '@thi.ng/vectors/maddn';
 import { normalize4 } from '@thi.ng/vectors/normalize';
+import { mixN3 } from '@thi.ng/vectors/mixn';
 import { mix } from '@thi.ng/math/mix';
 import { Smush32 as Random } from '@thi.ng/random';
 import { map } from '@epok.tech/fn-lists/map';
 import { reduce } from '@epok.tech/fn-lists/reduce';
+import { each } from '@epok.tech/fn-lists/each';
 import { range } from '@epok.tech/fn-lists/range';
 import { wrap } from '@epok.tech/fn-lists/wrap';
 import toTimer from '@epok.tech/fn-time';
@@ -53,8 +69,6 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const { skyHDR, volumeImg } = await load({
     skyHDR: { arrayBuffer: new URL('../media/sky-0.hdr', import.meta.url)+'' },
     volumeImg: { image: new URL('../media/volume-sdf.png', import.meta.url)+'' }
-    // volumeImg: { image: new URL('../media/volume-density.png', import.meta.url)+'' }
-    // volumeImg: { image: new URL('../media/volume-test.png', import.meta.url)+'' }
   });
 
   const gltfLoading = { enabledCameras: null };
@@ -85,7 +99,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const ease = {
     eps: 1e-4,
-    orbit: 5e-2, dof: 3e-2, exposure: 4e-2, ramp: 1e-2
+    orbit: 5e-2, dof: 3e-2, exposure: 4e-2, ramp: 1e-2, light: 5e-2
   };
 
   const orbit = renderer.orbiter({
@@ -160,11 +174,11 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       x_volumeTile: [8, 8],
       x_volumeTransform: volume.transform.modelMatrix,
       // Starting the ramp off below 0, to grow the shapes in over time.
-      x_volumeRamp: [-3e-2, 0, 0.2, 1],
+      x_volumeRamp: [-3e-2, 0, 0.1, 1],
       x_volumeSurface: [0.1, 30],
       x_colors: map((v) => divN3(v, v, 255),
         [[199, 134, 75, 1], [12, 24, 145, 1]], 0),
-      x_colorNoise: [4, 4, 4, 3e-4],
+      x_colorNoise: [5, 5, 5, 3e-4],
       x_time: range(3, 0)
     },
     castShadows: !!shadows, receiveShadows: !!shadows,
@@ -177,13 +191,13 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const onSphere = (angle, depth, to = []) =>
     mulN2(null, setC3(to, cos(angle), sin(angle), depth), sqrt(1-(depth**2)));
 
-  const shapesInstances = shapes.map(({ entities: es, root: r }, s) => {
+  const shapesInstances = shapes.map(({ entities, root }, s) => {
     const shapeInstances = reduce((to, _, i, a) => {
-        const { radius: r, centre: c } = wrap(randomInt(), volumeBounds);
+        const { radius, centre } = wrap(randomInt(), volumeBounds);
         const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
 
         (to.offsets ??= { data: a, divisor: 1 }).data[i] = maddN3(null,
-          p, (randomFloat()**0.6)*r, c);
+          p, (randomFloat()**0.6)*radius, centre);
 
         // (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(null,
         //   map((v) => v*randomFloat(), [1, 1, 1, tau], 0));
@@ -201,7 +215,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       // range(1e4), {});
       range(1e3), {});
 
-    es.forEach((e) => {
+    entities.forEach((e) => {
       const g = e.getComponent('Geometry');
 
       if(!g) { return; }
@@ -211,13 +225,33 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       m && e.removeComponent(m);
       e.addComponent(shapeMaterial);
       g.set(shapeInstances);
+
+      // @todo Need `positions` and `cells` arrays, but have write-only buffers.
+      // if(g.normals) { return; }
+
+      // const { positions, indices: cells } = g;
+
+      // g.set({ normals: toNormals(positions, cells) });
     });
 
-    r.transform.set({ position: [0, -0.1, 0] });
-    renderer.add(r);
+    root.transform.set({ position: [0, -0.1, 0] });
+    renderer.add(root);
 
     return shapeInstances;
   });
+
+  const eyesTo = { scale: range(3, 3e-2), intensity: 0.2 };
+
+  const eyes = map((position) => renderer.add(renderer.entity([
+        renderer.transform({ position, scale: range(3, 0) }),
+        renderer.geometry(toSphere()),
+        renderer.material({
+          blend: true, opacity: 0.6, unlit: true, baseColor: range(4, 5)
+        }),
+        renderer.pointLight({ intensity: 0, range: 1, castShadows: !!shadows })
+      ]),
+      volume),
+    [[-0.022, 0.106, 0.16], [0.065, 0.11, 0.135]], 0);
 
   const pointLights = map(({ color, position }) =>
       renderer.add(renderer.entity([
@@ -250,17 +284,36 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   });
 
   context.frame(() => {
-    const { eps, dof: easeDOF, exposure: easeExpose, ramp: easeRamp } = ease;
+    const { eps, dof: ed, exposure: ee, ramp: er, light: el } = ease;
     const d = orbit.distance;
     const dof = post.dofFocusDistance;
+
+    (abs(d-dof) > eps) && post.set({ dofFocusDistance: mix(dof, d, ed) });
+
     const expose = camera.exposure;
+
+    (1-expose > eps) && camera.set({ exposure: mix(expose, 1, ee) });
+
     const shapeUniforms = shapeMaterial.uniforms;
     const ramp = shapeUniforms.x_volumeRamp;
-    const [r0] = ramp;
+    const [ramp0] = ramp;
 
-    (abs(d-dof) > eps) && post.set({ dofFocusDistance: mix(dof, d, easeDOF) });
-    (1-expose > eps) && camera.set({ exposure: mix(expose, 1, easeExpose) });
-    (0-r0 > eps) && addN2(null, ramp, mix(r0, 0, easeRamp)-r0);
+    (0-ramp0 > eps) && addN2(null, ramp, mix(ramp0, 0, er)-ramp0);
+
+    const { scale: eyeS, intensity: eyeI } = eyesTo;
+
+    each((eye) => {
+        const t = eye.transform;
+        const s = t.scale;
+        const pl = eye.getComponent('PointLight');
+        const i = pl.intensity;
+
+        (abs(max(...eyeS)-max(...s)) > eps) &&
+          t.set({ scale: mixN3(null, s, eyeS, el) });
+
+        (abs(eyeI-i) > eps) && pl.set({ intensity: mix(i, eyeI, el) });
+      },
+      eyes);
 
     const { time, dt, loop } = toTimer(timer);
 
