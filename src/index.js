@@ -2,6 +2,26 @@ import getContext from 'pex-context';
 import getRenderer from 'pex-renderer';
 import { load } from 'pex-io';
 import parseHDR from 'parse-hdr';
+import toNormals from 'geom-normals';
+import { invert44 } from '@thi.ng/matrices/invert';
+import { set3 } from '@thi.ng/vectors/set';
+import { setC2, setC3 } from '@thi.ng/vectors/setc';
+import { mulN2, mulN3 } from '@thi.ng/vectors/muln';
+import { divN3 } from '@thi.ng/vectors/divn';
+import { subN2 } from '@thi.ng/vectors/subn';
+import { addN2, addN3 } from '@thi.ng/vectors/addn';
+import { maddN3 } from '@thi.ng/vectors/maddn';
+import { normalize4 } from '@thi.ng/vectors/normalize';
+import { mixN3 } from '@thi.ng/vectors/mixn';
+import { mix } from '@thi.ng/math/mix';
+import { Smush32 as Random } from '@thi.ng/random';
+import LSystem from 'lindenmayer';
+import { map } from '@epok.tech/fn-lists/map';
+import { reduce } from '@epok.tech/fn-lists/reduce';
+import { each } from '@epok.tech/fn-lists/each';
+import { range } from '@epok.tech/fn-lists/range';
+import { wrap } from '@epok.tech/fn-lists/wrap';
+import toTimer from '@epok.tech/fn-time';
 
 import toCube from 'primitive-geometry/src/cube';
 import toRoundedCube from 'primitive-geometry/src/rounded-cube';
@@ -13,27 +33,10 @@ import toCone from 'primitive-geometry/src/cone';
 import toCapsule from 'primitive-geometry/src/capsule';
 import toTorus from 'primitive-geometry/src/torus';
 import toTetrahedron from 'primitive-geometry/src/tetrahedron';
-import toIcosahedron from 'primitive-geometry/src/icosahedron';
-
-import toNormals from 'geom-normals';
-import { setC2, setC3 } from '@thi.ng/vectors/setc';
-import { mulN2, mulN3 } from '@thi.ng/vectors/muln';
-import { divN3 } from '@thi.ng/vectors/divn';
-import { subN2 } from '@thi.ng/vectors/subn';
-import { addN2, addN3 } from '@thi.ng/vectors/addn';
-import { maddN3 } from '@thi.ng/vectors/maddn';
-import { normalize4 } from '@thi.ng/vectors/normalize';
-import { mixN3 } from '@thi.ng/vectors/mixn';
-import { mix } from '@thi.ng/math/mix';
-import { Smush32 as Random } from '@thi.ng/random';
-import { map } from '@epok.tech/fn-lists/map';
-import { reduce } from '@epok.tech/fn-lists/reduce';
-import { each } from '@epok.tech/fn-lists/each';
-import { range } from '@epok.tech/fn-lists/range';
-import { wrap } from '@epok.tech/fn-lists/wrap';
-import toTimer from '@epok.tech/fn-time';
+import toIcosahedron from 'primitive-geometry/src/icosahedron'
 
 import * as shapeInVolume from './shape-in-volume';
+import * as distort from './distort';
 
 const {
     min, max, abs, floor, round, sqrt, sin, cos, PI: pi, TAU: tau = pi*2
@@ -61,10 +64,13 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   });
 
   const pipelineShaders = renderer.shaders.pipeline;
-  const timer = toTimer({ step: '-', loop: 1e5 });
+  const timer = toTimer({ step: '-', loop: 1e8 });
 
   // console.log('pipeline', pipelineShaders);
-  // console.log('shape-in-volume', shapeInVolume.vert, shapeInVolume.frag);
+  // console.log('shapeInVolume.vert', shapeInVolume.vert);
+  // console.log('shapeInVolume.frag', shapeInVolume.frag);
+  // console.log('distort.vert', distort.vert);
+  // console.log('distort.frag', distort.frag);
 
   const { skyHDR, volumeImg } = await load({
     skyHDR: { arrayBuffer: new URL('../media/sky-0.hdr', import.meta.url)+'' },
@@ -99,7 +105,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const ease = {
     eps: 1e-4,
-    orbit: 5e-2, dof: 3e-2, exposure: 4e-2, ramp: 1e-2, light: 5e-2
+    orbit: 5e-2, dof: 3e-2, exposure: 3e-2, surface: 1e-2, light: 5e-2
   };
 
   const orbit = renderer.orbiter({
@@ -153,18 +159,45 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const [humanoid, ...shapes] = scenes;
 
-  const humanoidMaterial = renderer.material({
-    metallic: 0.2, roughness: 0.8, blend: true, opacity: 1e-2
-  });
+  // const humanoidMaterialState = {
+  //   metallic: 0.2, roughness: 0.8, blend: true, opacity: 0.1
+  // };
+  const humanoidMaterialState = {
+    // ...distort,
+    // vert: '#define x_orientToField\n'+distort.vert,
+    // vert: '#define x_orientToField\n#define x_cellNoise 0\n'+distort.vert,
+    // vert: '#define x_orientToField\n#define x_cellNoise 1\n'+distort.vert,
+    vert: '#define x_orientToField\n#define x_cellNoise 2\n'+distort.vert,
+    frag: distort.frag,
+    uniforms: {
+      x_distortNoise: [12, 12, 2],
+      x_distortSpeed: [0, 0, 1e-4],
+      x_distortShake: 1,
+      x_distortSurface: [1, 2e-2, 5e-2, 5e-2],
+      x_distortNormal: 1e-5,
+      x_time: range(3)
+    },
+    metallic: 0.2, roughness: 0.8, blend: true, opacity: 0.9,
+    alphaTest: 0.4, cullFace: false
+  };
 
-  humanoid.entities.forEach((e) =>
-    e.getComponent('Material') && e.addComponent(humanoidMaterial));
+  humanoid.entities.forEach((e) => e.getComponent('Material') &&
+    e.addComponent(renderer.material(humanoidMaterialState)));
 
-  // renderer.add(humanoid.root, volume);
+  renderer.add(humanoid.root, volume);
   humanoid.root.transform
     .set({ scale: range(3, 1.2), position: [0, -0.32, 0] });
 
-  const shapeMaterial = renderer.material({
+  // shapes.push(toCube, toRoundedCube, toSphere, toIcosphere, toEllipsoid,
+  //   toCylinder, toCone, toCapsule, toTorus, toTetrahedron, toIcosahedron);
+
+  map((s) => ((typeof s !== 'function')? s
+      : { root: renderer.entity([renderer.geometry(s())]) }),
+    shapes, 0);
+
+  const shapeTo = { surfaceScale: 40 };
+
+  const shapeMaterialState = {
     // ...shapeInVolume,
     vert: '#define x_orientToVolume\n#define x_clampToVolume\n'+
       shapeInVolume.vert,
@@ -172,18 +205,18 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     uniforms: {
       x_volumeTexture: volumeTexture,
       x_volumeTile: [8, 8],
-      x_volumeTransform: volume.transform.modelMatrix,
+      x_volumeInverse: [],
       // Starting the ramp off below 0, to grow the shapes in over time.
-      x_volumeRamp: [-3e-2, 0, 0.1, 1],
-      x_volumeSurface: [0.1, 30],
+      x_volumeRamp: [-3e-2, 0, 0.15, 1],
+      x_volumeSurface: [0.1, -20],
       x_colors: map((v) => divN3(v, v, 255),
         [[199, 134, 75, 1], [12, 24, 145, 1]], 0),
       x_colorNoise: [5, 5, 5, 3e-4],
-      x_time: range(3, 0)
+      x_time: range(3)
     },
     castShadows: !!shadows, receiveShadows: !!shadows,
     metallic: 0.7, roughness: 0.3
-  });
+  };
 
   /**
    * @see [Spherical distribution](https://observablehq.com/@rreusser/equally-distributing-points-on-a-sphere)
@@ -191,7 +224,26 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const onSphere = (angle, depth, to = []) =>
     mulN2(null, setC3(to, cos(angle), sin(angle), depth), sqrt(1-(depth**2)));
 
-  const shapesInstances = shapes.map(({ entities, root }, s) => {
+  const dna = new LSystem({
+    forceObjects: true,
+    axiom: 'FAFF',
+    productions: {
+      'F': '[A+F]X[F-A]',
+      'A': [{ symbol: 'X', test: 1 }],
+      'X': [{ symbol: 'X', test: 2 }]
+    },
+    finals: {
+      'F': (d, ...etc) => console.log(d, ...etc),
+      'A': (d, ...etc) => console.log(d, ...etc),
+      'X': (d, ...etc) => console.log(d, ...etc)
+    }
+  });
+
+  console.log(dna.axiom);
+  console.log(dna.iterate(1));
+  dna.final('?');
+
+  const shapesInstances = shapes.map(({ root, entities }, s) => {
     const shapeInstances = reduce((to, _, i, a) => {
         const { radius, centre } = wrap(randomInt(), volumeBounds);
         const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
@@ -214,16 +266,17 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       },
       // range(1e4), {});
       range(1e3), {});
+      // range(2e2), {});
 
-    entities.forEach((e) => {
+    function setup(e) {
       const g = e.getComponent('Geometry');
 
-      if(!g) { return; }
+      if(!g) { return e; }
 
       const m = e.getComponent('Material');
 
       m && e.removeComponent(m);
-      e.addComponent(shapeMaterial);
+      e.addComponent(renderer.material(shapeMaterialState));
       g.set(shapeInstances);
 
       // @todo Need `positions` and `cells` arrays, but have write-only buffers.
@@ -232,10 +285,12 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       // const { positions, indices: cells } = g;
 
       // g.set({ normals: toNormals(positions, cells) });
-    });
 
-    root.transform.set({ position: [0, -0.1, 0] });
-    renderer.add(root);
+      return e;
+    }
+
+    entities?.forEach?.(setup);
+    renderer.add(setup(root));
 
     return shapeInstances;
   });
@@ -255,10 +310,11 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const pointLights = map(({ color, position }) =>
       renderer.add(renderer.entity([
-        renderer.pointLight({ intensity: 5, castShadows: !!shadows, color }),
+        renderer.pointLight({ intensity: 9, castShadows: !!shadows, color }),
         renderer.transform({ position })
       ])),
     [
+      { color: [1, 1, 1, 1], position: [1, 1, 1] },
       { color: [0, 0, 1, 1], position: [-1, -1, -1] },
       { color: [0, 0, 1, 1], position: [-1, 1, 1] },
       { color: [1, 0, 1, 1], position: [1, -1, -1] },
@@ -266,25 +322,30 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     ],
     0);
 
-  function resize() {
-    const { innerWidth: width, innerHeight: height } = self;
-    const { pixelRatio: pr } = context;
+  function draw() {
+    const { eps, dof: ed, exposure: ee, surface: es, light: el } = ease;
+    const hus = humanoidMaterialState.uniforms;
+    const { x_time: ht } = hus;
+    const sus = shapeMaterialState.uniforms;
+    const { x_time: st, x_volumeRamp, x_volumeSurface, x_volumeInverse } = sus;
+    const { time, dt, loop } = toTimer(timer);
 
-    context.set({ width, height });
-    camera.set({ viewport: [0, 0, width*pr, height*pr] });
-    renderer.draw();
-  }
+    set3(ht, setC3(st, time, dt, abs(((time+loop)%(loop*2))-loop)));
 
-  resize();
-  addEventListener('resize', resize);
+    const [rampMin] = x_volumeRamp;
 
-  orbit.set({
-    distance: mix(orbit.minDistance, orbit.maxDistance, 0.25),
-    lat: 10, lon: -70
-  });
+    (0-rampMin > eps) && addN2(null, x_volumeRamp, mix(rampMin, 0, es)-rampMin);
 
-  context.frame(() => {
-    const { eps, dof: ed, exposure: ee, ramp: er, light: el } = ease;
+    const skin = x_volumeSurface[1];
+    const skinTo = shapeTo.surfaceScale;
+
+    (abs(skin-skinTo) > eps) && (x_volumeSurface[1] = mix(skin, skinTo, es));
+
+    const volumeTransform = volume.transform;
+
+    volumeTransform.update();
+    invert44(x_volumeInverse, volumeTransform.modelMatrix);
+
     const d = orbit.distance;
     const dof = post.dofFocusDistance;
 
@@ -293,12 +354,6 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     const expose = camera.exposure;
 
     (1-expose > eps) && camera.set({ exposure: mix(expose, 1, ee) });
-
-    const shapeUniforms = shapeMaterial.uniforms;
-    const ramp = shapeUniforms.x_volumeRamp;
-    const [ramp0] = ramp;
-
-    (0-ramp0 > eps) && addN2(null, ramp, mix(ramp0, 0, er)-ramp0);
 
     const { scale: eyeS, intensity: eyeI } = eyesTo;
 
@@ -315,12 +370,27 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       },
       eyes);
 
-    const { time, dt, loop } = toTimer(timer);
-
-    setC3(shapeUniforms.x_time, time, dt, abs(((time+loop)%(loop*2))-loop));
-
     renderer.draw();
+  }
+
+  function resize() {
+    const { innerWidth: width, innerHeight: height } = self;
+    const { pixelRatio: pr } = context;
+
+    context.set({ width, height });
+    camera.set({ viewport: [0, 0, width*pr, height*pr] });
+    draw();
+  }
+
+  resize();
+  addEventListener('resize', resize);
+
+  orbit.set({
+    distance: mix(orbit.minDistance, orbit.maxDistance, 0.25),
+    lat: 10, lon: -70
   });
+
+  context.frame(draw);
 
   self.context = context;
   self.renderer = renderer;

@@ -17,30 +17,25 @@ void main() {
 
 uniform sampler2D x_volumeTexture;
 uniform vec2 x_volumeTile;
-uniform mat4 x_volumeTransform;
+uniform mat4 x_volumeInverse;
 uniform vec4 x_volumeRamp;
 
 #pragma glslify: x_map = require(glsl-map)
-#pragma glslify: x_inverse = require(glsl-inverse)
 
-#if !defined(DEPTH_PRE_PASS_ONLY) && !defined(DEPTH_PASS_ONLY)
-  uniform vec4 x_colors[2];
-  uniform vec4 x_colorNoise;
-  // Time now, step, looped.
-  uniform vec3 x_time;
+uniform vec4 x_colors[2];
+uniform vec4 x_colorNoise;
+// Time now, step, looped.
+uniform vec3 x_time;
 
-  #pragma glslify: x_noise = require(glsl-noise/simplex/4d)
-#endif
-
+#pragma glslify: x_noise = require(glsl-noise/simplex/4d)
 #pragma glslify: x_volume = require(../volume)
 
 #if defined(x_orientToVolume) || defined(x_clampToVolume)
   // Scales for sampling normals and distance to clamp.
   uniform vec2 x_volumeSurface;
 
-  // #pragma glslify: x_lookAt = require(../look-at)
-  #pragma glslify: x_rotationByAxes = require(../rotation-by-axes)
   #pragma glslify: x_toVolumeNormal = require(../volume/normal, voxels=x_volumeTexture, tile=x_volumeTile)
+  #pragma glslify: x_rotationByAxes = require(../rotation-by-axes)
 #endif
 
 void main() {
@@ -59,14 +54,19 @@ void main() {
 
   vPositionWorld = vec3(uModelMatrix * position);
   vPositionView = vec3(uViewMatrix * vec4(vPositionWorld, 1.0));
+#pragma swap-by
+  // Custom shader, doesn't include match.
 #pragma swap-to
 // ...
 #pragma swap-at
     positionView = uViewMatrix * skinMat * position;
 #pragma swap-at
-  gl_Position = uProjectionMatrix * uViewMatrix * skinMat * position;
+  vNormalView = vec3(uViewMatrix * skinMat * vec4(normal, 0.0));
 #pragma swap-by
-  // Custom shader start.
+    // Custom shader start.
+    position = skinMat*position;
+  #else
+    position = uModelMatrix*position;
   #endif
 
   /**
@@ -76,18 +76,12 @@ void main() {
    * 4. Swap `position` back to `aPosition`
    * 5. Apply volume transform, sampled at the origin, to `position`
    * 6. Reapply the other transforms to `position` as per default flow
-   * ...
    */
-  #ifdef USE_SKIN
-    position = skinMat*position;
-  #else
-    position = uModelMatrix*position;
-  #endif
 
   // Sample the volume at the world-space origin `position` transformed into the
   // volume's local space.
   vec4 x_voxel = x_volume(x_volumeTexture, x_volumeTile,
-    vec3(x_inverse(x_volumeTransform)*position));
+    vec3(x_volumeInverse*position));
 
   #if defined(x_orientToVolume) || defined(x_clampToVolume)
     vec3 x_volumeNormal = x_toVolumeNormal(position.xyz, x_volumeSurface.x);
@@ -98,11 +92,10 @@ void main() {
   #if !defined(USE_VERTEX_COLORS) && !defined(USE_INSTANCED_COLOR)
     vColor = vec4(1);
   #endif
-  #if !defined(DEPTH_PRE_PASS_ONLY) && !defined(DEPTH_PASS_ONLY)
-    vColor *= mix(x_colors[0], x_colors[1],
-      // @todo Make the noise properly symmetrical, expand on this `abs` idea.
-      x_noise(abs(vec4(position.xyz, x_time.z)*x_colorNoise)));
-  #endif
+
+  vColor *= mix(x_colors[0], x_colors[1],
+    // @todo Make the noise properly symmetrical, expand on this `abs` idea.
+    x_noise(abs(vec4(position.xyz, x_time.z)*x_colorNoise)));
 
   // Ramp the voxel by its distance from the volume, map it to a scale vector.
   vec3 x_scale = x_voxel.xyz*x_voxel.a;
@@ -122,7 +115,7 @@ void main() {
   #endif
   #ifdef x_clampToVolume
     // Clamp position within the volume, move it back along the volume normal.
-    position.xyz -= x_volumeNormal*max(x_voxel.xyz*x_volumeSurface.y, 0.0);
+    position.xyz -= x_volumeNormal*max(x_voxel.xyz, 0.0)*x_volumeSurface.y;
   #endif
 
   // Reapply transformations to `position`.
@@ -145,7 +138,7 @@ void main() {
     vPositionView = vec3(uViewMatrix*vec4(vPositionWorld, 1));
   #endif
 
-#ifdef USE_SKIN
-  // Custom shader end. Includes match:$&
+  #ifdef USE_SKIN
+    // Custom shader end. Includes match:$&
 #pragma swap-to
 // ...

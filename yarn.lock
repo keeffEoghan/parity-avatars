@@ -83,11 +83,14 @@ __metadata:
     "@thi.ng/vectors": ^7.7.22
     assert: ^2.0.0
     geom-normals: ^2.0.1
+    glsl-curl-noise: ^0.0.4
     glsl-inverse: ^1.0.0
     glsl-map: ^1.0.1
     glsl-noise: ^0.0.0
     glsl-rotate: ^2.0.0
     glsl-sdf-normal: ^1.0.0
+    glsl-worley: ^1.0.2
+    lindenmayer: ^1.5.4
     parcel: ^2.9.3
     parse-hdr: ^1.0.0
     path-browserify: ^1.0.0
@@ -2410,6 +2413,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"glsl-curl-noise@npm:^0.0.4":
+  version: 0.0.4
+  resolution: "glsl-curl-noise@npm:0.0.4"
+  dependencies:
+    glsl-noise: 0.0.0
+  checksum: 4f7ce0acfe7a9a793c575ba19ea936fcb3f222e8900ecb183133552dcc5efb509530bc53cafdb4f252df5510f4d139170b8fe16e28579d4aed3e841c78e314fc
+  languageName: node
+  linkType: hard
+
 "glsl-inject-defines@npm:^1.0.1":
   version: 1.0.3
   resolution: "glsl-inject-defines@npm:1.0.3"
@@ -2435,7 +2447,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"glsl-noise@npm:^0.0.0":
+"glsl-noise@npm:0.0.0, glsl-noise@npm:^0.0.0":
   version: 0.0.0
   resolution: "glsl-noise@npm:0.0.0"
   checksum: 07986663451963c90f8177f0a7d79a897ce27ad47841bfae6833647803ce7b8b65c8c18b8aecc576f1fc8e67ae6c8b5e5e1501b604cf3b1e9855c639e739e2c3
@@ -2542,6 +2554,13 @@ __metadata:
   dependencies:
     through2: ^0.6.3
   checksum: daf70e91c66a3143fe0b22be18a0f8cc965d7b81f73a58b14d55d08593bdcc3f996996549bda78b4cc822d7fe8c216aaeaab71f2695d802fb79fc9e89fb507d3
+  languageName: node
+  linkType: hard
+
+"glsl-worley@npm:^1.0.2":
+  version: 1.0.2
+  resolution: "glsl-worley@npm:1.0.2"
+  checksum: b2062276927ce48ae3d22bb3ad724ad9c56509169ad2e453cf5fccf3a361716fb9ff80f5017b2cc4eba1066baff04cc2f19613d5b3082ec5ca9a82d4433ba074
   languageName: node
   linkType: hard
 
@@ -3233,6 +3252,13 @@ __metadata:
     lightningcss-win32-x64-msvc:
       optional: true
   checksum: 6b9a04846243a2161ac12ee098f9c2143a1a06fb683228ef0433473257751a709b0bafa195efa8d3d8f1556ca60c54f5434caeb172874a8daced552dedcbed93
+  languageName: node
+  linkType: hard
+
+"lindenmayer@npm:^1.5.4":
+  version: 1.5.4
+  resolution: "lindenmayer@npm:1.5.4"
+  checksum: 24e071d7c374acfde4227a56914691bfef1466cf10e56e4ae72c1c76ab5846cfb56416152bfe62176e19ca2c8fe8ecd73ab9ab7224f93eb0cec3128a6d755561
   languageName: node
   linkType: hard
 
