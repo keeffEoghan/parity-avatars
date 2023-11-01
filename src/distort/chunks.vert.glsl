@@ -58,15 +58,23 @@ vec3 x_atNoise(vec3 at) {
 // Custom shader end. Includes match.$&
 #pragma swap-to
 // ...
+// #pragma swap-at
+//     #ifdef USE_VERTEX_COLORS
+//       vColor = aVertexColor;
+//     #endif
+//   #endif
+// #pragma swap-at
+//   #ifdef USE_VERTEX_COLORS
+//     vColor = aVertexColor;
+//   #endif
+// #endif
 #pragma swap-at
-    #ifdef USE_VERTEX_COLORS
-      vColor = aVertexColor;
-    #endif
+  #ifdef USE_NORMALS
+    normal = aNormal;
   #endif
 #pragma swap-at
-  #ifdef USE_VERTEX_COLORS
-    vColor = aVertexColor;
-  #endif
+#ifdef USE_NORMALS
+  normal = aNormal;
 #endif
 #pragma swap-by
   // Custom shader end. Includes match.$&
@@ -79,24 +87,24 @@ vec3 x_atNoise(vec3 at) {
 
   // Sample the noise at the local-space `position`.
   vec3 x_positionNoise = x_atNoise(position.xyz);
-  float x_distort = x_distortSurface.x*x_toNoise(x_positionNoise);
+  float x_distort = x_toNoise(x_positionNoise);
+
+  // Move `position` by a given amount along the current `normal`.
+  position.xyz += normal*x_distortSurface.x;
+
+  #ifdef x_orientToField
+    normal = normalize(mix(normal,
+      x_toSDFNormal(x_positionNoise, x_distortNormal), x_distortSurface.y));
+  #endif
+
+  // Move `position` by the noise field sample along the new `normal`.
+  position.xyz += normal*x_distort*x_distortSurface.z;
 
   #if !defined(USE_VERTEX_COLORS) && !defined(USE_INSTANCED_COLOR)
     vColor = vec4(1);
   #endif
 
-  vColor.a *= x_distort;
-
-  // Move `position` by a given amount along the current `normal`.
-  position.xyz += normal*x_distortSurface.y;
-
-  #ifdef x_orientToField
-    normal = normalize(mix(normal,
-      x_toSDFNormal(x_positionNoise, x_distortNormal), x_distortSurface.z));
-  #endif
-
-  // Move `position` by the noise field sample along the new `normal`.
-  position.xyz += normal*x_distort*x_distortSurface.w;
+  vColor.a *= step(x_distortSurface.a, x_distort);
 
   // Custom shader end.
 #pragma swap-to

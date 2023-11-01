@@ -7,7 +7,6 @@ import { invert44 } from '@thi.ng/matrices/invert';
 import { set3 } from '@thi.ng/vectors/set';
 import { setC2, setC3 } from '@thi.ng/vectors/setc';
 import { mulN2, mulN3 } from '@thi.ng/vectors/muln';
-import { divN3 } from '@thi.ng/vectors/divn';
 import { subN2 } from '@thi.ng/vectors/subn';
 import { addN2, addN3 } from '@thi.ng/vectors/addn';
 import { maddN3 } from '@thi.ng/vectors/maddn';
@@ -44,7 +43,8 @@ const {
 
 const query = new URLSearchParams(location.search);
 
-const pauseOnBlur = !(query.get('pause-on-blur') === 'false');
+const animate = (query.get('animate') !== 'false');
+const pauseOnBlur = (query.get('pause-on-blur') !== 'false');
 const shadows = parseInt(query.get('shadows') || 4, 10) || 0;
 
 const random = new Random(parseInt(query.get('seed') ?? '0x67229302'));
@@ -57,7 +57,6 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 (async () => {
   const canvas = document.querySelector('canvas');
   const context = getContext({ canvas });
-  const { gl, PixelFormat, Encoding } = context;
 
   const renderer = getRenderer({
     ctx: context, pauseOnBlur, shadowQuality: shadows
@@ -67,10 +66,6 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const timer = toTimer({ step: '-', loop: 1e8 });
 
   // console.log('pipeline', pipelineShaders);
-  // console.log('shapeInVolume.vert', shapeInVolume.vert);
-  // console.log('shapeInVolume.frag', shapeInVolume.frag);
-  // console.log('distort.vert', distort.vert);
-  // console.log('distort.frag', distort.frag);
 
   const { skyHDR, volumeImg } = await load({
     skyHDR: { arrayBuffer: new URL('../media/sky-0.hdr', import.meta.url)+'' },
@@ -98,6 +93,15 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     ],
     0));
 
+  /** @see [Limnu on blending](https://limnu.com/webgl-blending-youre-probably-wrong/) */
+  const blend = {
+    blend: true,
+    blendSrcRGBFactor: context.BlendFactor.One,
+    blendDstRGBFactor: context.BlendFactor.OneMinusSrcAlpha,
+    blendSrcAlphaFactor: context.BlendFactor.One,
+    blendDstAlphaFactor: context.BlendFactor.OneMinusSrcAlpha
+  };
+
   const camera = renderer.camera({
     fov: pi*0.5, near: 1e-2, far: 1e2, fStop: 1.6, sensorFit: 'overscan',
     exposure: 0
@@ -105,7 +109,9 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const ease = {
     eps: 1e-4,
-    orbit: 5e-2, dof: 3e-2, exposure: 3e-2, surface: 1e-2, light: 5e-2
+    orbit: mix(1, 5e-2, animate), dof: mix(1, 3e-2, animate),
+    exposure: mix(1, 3e-2, animate), surface: mix(1, 1e-2, animate),
+    light: mix(1, 5e-2, animate)
   };
 
   const orbit = renderer.orbiter({
@@ -132,7 +138,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const skyTexture = context.texture2D({
     data: skyData, width: skyW, height: skyH, flipY: true,
-    pixelFormat: PixelFormat.RGBA32F, encoding: Encoding.Linear
+    pixelFormat: context.PixelFormat.RGBA32F, encoding: context.Encoding.Linear
   });
 
   const backgroundTexture = context
@@ -159,9 +165,9 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const [humanoid, ...shapes] = scenes;
 
-  // const humanoidMaterialState = {
-  //   metallic: 0.2, roughness: 0.8, blend: true, opacity: 0.1
-  // };
+  // console.log('distort.vert', distort.vert);
+  // console.log('distort.frag', distort.frag);
+
   const humanoidMaterialState = {
     // ...distort,
     // vert: '#define x_orientToField\n'+distort.vert,
@@ -170,23 +176,31 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     vert: '#define x_orientToField\n#define x_cellNoise 2\n'+distort.vert,
     frag: distort.frag,
     uniforms: {
-      x_distortNoise: [12, 12, 2],
-      x_distortSpeed: [0, 0, 1e-4],
+      // x_distortNoise: [12, 12, 1],
+      x_distortNoise: [6, 6, 6],
+      x_distortSpeed: [0, 0, 5e-5],
       x_distortShake: 1,
-      x_distortSurface: [1, 2e-2, 5e-2, 5e-2],
+      // x_distortSurface: [3e-2, 0.1, 5e-2, 0.4],
+      x_distortSurface: [1e-2, 0.1, 0.1, 0.2],
       x_distortNormal: 1e-5,
       x_time: range(3)
     },
-    metallic: 0.2, roughness: 0.8, blend: true, opacity: 0.9,
-    alphaTest: 0.4, cullFace: false
+    metallic: 0.1, roughness: 0.9,
+    castShadows: !!shadows, receiveShadows: !!shadows,
+    // @todo Improve alpha blending and face-culling issues.
+    alphaTest: 1,
+    ...blend,
+    // cullFace: false,
+    cullFaceMode: context.Face.Front
   };
 
   humanoid.entities.forEach((e) => e.getComponent('Material') &&
     e.addComponent(renderer.material(humanoidMaterialState)));
 
-  renderer.add(humanoid.root, volume);
   humanoid.root.transform
     .set({ scale: range(3, 1.2), position: [0, -0.32, 0] });
+
+  renderer.add(humanoid.root, volume);
 
   // shapes.push(toCube, toRoundedCube, toSphere, toIcosphere, toEllipsoid,
   //   toCylinder, toCone, toCapsule, toTorus, toTetrahedron, toIcosahedron);
@@ -196,6 +210,9 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     shapes, 0);
 
   const shapeTo = { surfaceScale: 40 };
+
+  // console.log('shapeInVolume.vert', shapeInVolume.vert);
+  // console.log('shapeInVolume.frag', shapeInVolume.frag);
 
   const shapeMaterialState = {
     // ...shapeInVolume,
@@ -209,64 +226,109 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       // Starting the ramp off below 0, to grow the shapes in over time.
       x_volumeRamp: [-3e-2, 0, 0.15, 1],
       x_volumeSurface: [0.1, -20],
-      x_colors: map((v) => divN3(v, v, 255),
+      x_colors: map((v) => mulN3(v, v, 1/255),
         [[199, 134, 75, 1], [12, 24, 145, 1]], 0),
       x_colorNoise: [5, 5, 5, 3e-4],
       x_time: range(3)
     },
+    metallic: 0.7, roughness: 0.3,
     castShadows: !!shadows, receiveShadows: !!shadows,
-    metallic: 0.7, roughness: 0.3
+    ...blend
   };
 
   /**
    * @see [Spherical distribution](https://observablehq.com/@rreusser/equally-distributing-points-on-a-sphere)
    */
   const onSphere = (angle, depth, to = []) =>
-    mulN2(null, setC3(to, cos(angle), sin(angle), depth), sqrt(1-(depth**2)));
+    mulN2(to, setC3(to, cos(angle), sin(angle), depth), sqrt(1-(depth*depth)));
 
-  const dna = new LSystem({
+  const shapesInstances = map(() => ({ instances: 0 }), shapes);
+
+  const growth = new LSystem({
     forceObjects: true,
-    axiom: 'FAFF',
+    axiom: 'A',
     productions: {
-      'F': '[A+F]X[F-A]',
-      'A': [{ symbol: 'X', test: 1 }],
-      'X': [{ symbol: 'X', test: 2 }]
+      // Concentric.
+      // A: '[F"![^A&&A]-A++A]',
+      A: [{ symbol: 'A', test: 1 }]
+      // Tree.
+      // A: '-F+!A:0.40',
+      // A: '+F-!A:0.40',
+      // A: '~(30)[--"A]A:0.1',
+      // A: '~(30)[++"A]A:0.1'
     },
     finals: {
-      'F': (d, ...etc) => console.log(d, ...etc),
-      'A': (d, ...etc) => console.log(d, ...etc),
-      'X': (d, ...etc) => console.log(d, ...etc)
+      A: ({ index, part }, ...etc) => console.log('A', index, part, ...etc),
+      F: ({ index, part }, ...etc) => console.log('F', index, part, ...etc),
+      /**
+       * @see [3D interactive demo](https://github.com/nylki/lindenmayer/blob/main/docs/examples/interactive_lsystem_builder/index_3d.html)
+       * @see [Houdini L-system syntax](https://www.sidefx.com/docs/houdini/nodes/sop/lsystem.html)
+       */
+      // 'F': pushSegment,
+      // '+': () => rotation.multiply(yPosRotation),
+      // '-': () => rotation.multiply(yNegRotation),
+      // '&': () => rotation.multiply(zNegRotation),
+      // '^': () => rotation.multiply(zPosRotation),
+      // '\\': () => rotation.multiply(xNegRotation),
+      // '<': () => rotation.multiply(xNegRotation),
+      // '/': () => rotation.multiply(xPosRotation),
+      // '>': () => rotation.multiply(xPosRotation),
+      // '|': () => rotation.multiply(yReverseRotation),
+      // '!': () => {
+      //   currentSegment.scale.set(currentSegment.scale.x, currentSegment.scale.y + 0.2, currentSegment.scale.z + 0.2);
+      //   colorIndex = Math.min(colors.length - 1, colorIndex + 1);
+      //   for (let face of currentSegment.geometry.faces) {
+      //     face.color.setHex(colors[colorIndex]);
+      //   }
+      //   currentSegment.geometry.colorsNeedUpdate = true;
+      // },
+      // '\'': () => {
+      //   currentSegment.scale.set(currentSegment.scale.x, currentSegment.scale.y - 0.2, currentSegment.scale.z - 0.2);
+      //   colorIndex = Math.max(0, colorIndex - 1);
+      //   for (let face of currentSegment.geometry.faces) {
+      //     face.color.setHex(colors[colorIndex]);
+      //   }
+      //   currentSegment.geometry.colorsNeedUpdate = true;
+      // },
+      // '[': () => stack.push(currentSegment.clone()),
+      // ']': () => currentSegment = stack.pop()
     }
   });
 
-  console.log(dna.axiom);
-  console.log(dna.iterate(1));
-  dna.final('?');
+  console.log(growth.axiom);
+  console.log(growth.iterate(1), growth.getString());
+  growth.final('?', '!');
 
-  const shapesInstances = shapes.map(({ root, entities }, s) => {
-    const shapeInstances = reduce((to, _, i, a) => {
-        const { radius, centre } = wrap(randomInt(), volumeBounds);
-        const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
+  const allInstances = reduce((all, _, i, a) => {
+      const to = wrap(randomInt(), shapesInstances);
+      const allOffsets = (all.offsets ??= { data: a, divisor: 1 }).data;
+      const toOffsets = (to.offsets ??= { data: [], divisor: 1 }).data;
+      // const allRotations = (all.rotations ??= { data: [], divisor: 1 }).data;
+      // const toRotations = (to.rotations ??= { data: [], divisor: 1 }).data;
+      const allScales = (all.scales ??= { data: [], divisor: 1 }).data;
+      const toScales = (to.scales ??= { data: [], divisor: 1 }).data;
+      const { radius, centre } = wrap(randomInt(), volumeBounds);
+      const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
 
-        (to.offsets ??= { data: a, divisor: 1 }).data[i] = maddN3(null,
-          p, (randomFloat()**0.6)*radius, centre);
+      toOffsets.push(allOffsets[i] = maddN3(null,
+        p, (randomFloat()**0.6)*radius, centre));
 
-        // (to.rotations ??= { data: [], divisor: 1 }).data[i] = normalize4(null,
-        //   map((v) => v*randomFloat(), [1, 1, 1, tau], 0));
+      // toRotations.push(allRotations[i] = normalize4(null,
+      //   map((v) => v*randomFloat(), [1, 1, 1, tau], 0)));
 
-        (to.scales ??= { data: [], divisor: 1 }).data[i] = range(3,
-          // 2e-2);
-          // 5e-2);
-          // mix(1e-2, 3e-2, randomFloat()));
-          mix(3e-2, 6e-2, randomFloat()));
+      toScales.push(allScales[i] = range(3, mix(2e-2, 5e-2, randomFloat())));
 
-        to.instances ??= a.length;
+      all.instances ??= a.length;
+      ++to.instances;
 
-        return to;
-      },
-      // range(1e4), {});
-      range(1e3), {});
-      // range(2e2), {});
+      return all;
+    },
+    range(3e3), {});
+
+  // console.log(shapesInstances, allInstances);
+
+  shapes.forEach(({ root, entities }, s) => {
+    const shapeInstances = shapesInstances[s];
 
     function setup(e) {
       const g = e.getComponent('Geometry');
@@ -291,8 +353,6 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
     entities?.forEach?.(setup);
     renderer.add(setup(root));
-
-    return shapeInstances;
   });
 
   const eyesTo = { scale: range(3, 3e-2), intensity: 0.2 };
@@ -301,7 +361,8 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
         renderer.transform({ position, scale: range(3, 0) }),
         renderer.geometry(toSphere()),
         renderer.material({
-          blend: true, opacity: 0.6, unlit: true, baseColor: range(4, 5)
+          ...blend, opacity: 0.6,
+          unlit: true, baseColor: range(4, 5)
         }),
         renderer.pointLight({ intensity: 0, range: 1, castShadows: !!shadows })
       ]),
@@ -314,7 +375,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
         renderer.transform({ position })
       ])),
     [
-      { color: [1, 1, 1, 1], position: [1, 1, 1] },
+      // { color: [1, 1, 1, 1], position: [1, 1, -1] },
       { color: [0, 0, 1, 1], position: [-1, -1, -1] },
       { color: [0, 0, 1, 1], position: [-1, 1, 1] },
       { color: [1, 0, 1, 1], position: [1, -1, -1] },
@@ -328,7 +389,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     const { x_time: ht } = hus;
     const sus = shapeMaterialState.uniforms;
     const { x_time: st, x_volumeRamp, x_volumeSurface, x_volumeInverse } = sus;
-    const { time, dt, loop } = toTimer(timer);
+    const { time, dt, loop } = ((animate)? toTimer(timer) : timer);
 
     set3(ht, setC3(st, time, dt, abs(((time+loop)%(loop*2))-loop)));
 
