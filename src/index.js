@@ -171,24 +171,28 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const humanoidMaterialState = {
     // ...distort,
     // vert: '#define x_orientToField\n'+distort.vert,
+    // frag: '#define x_orientToField\n'+distort.frag,
     // vert: '#define x_orientToField\n#define x_cellNoise 0\n'+distort.vert,
+    // frag: '#define x_orientToField\n#define x_cellNoise 0\n'+distort.frag,
     // vert: '#define x_orientToField\n#define x_cellNoise 1\n'+distort.vert,
+    // frag: '#define x_orientToField\n#define x_cellNoise 1\n'+distort.frag,
     vert: '#define x_orientToField\n#define x_cellNoise 2\n'+distort.vert,
-    frag: distort.frag,
+    frag: '#define x_orientToField\n#define x_cellNoise 2\n'+distort.frag,
     uniforms: {
       // x_distortNoise: [12, 12, 1],
-      x_distortNoise: [6, 6, 6],
+      x_distortNoise: [2, 2, 2],
       x_distortSpeed: [0, 0, 5e-5],
       x_distortShake: 1,
-      // x_distortSurface: [3e-2, 0.1, 5e-2, 0.4],
-      x_distortSurface: [1e-2, 0.1, 0.1, 0.2],
+      // x_distortSurface: [3e-2, 0.1, 0.1, -1],
+      x_distortSurface: [1e-2, 0.1, 0.1, 0.8],
       x_distortNormal: 1e-5,
       x_time: range(3)
     },
     metallic: 0.1, roughness: 0.9,
     castShadows: !!shadows, receiveShadows: !!shadows,
     // @todo Improve alpha blending and face-culling issues.
-    alphaTest: 1,
+    // alphaTest: 0.9,
+    alphaTest: 0.1,
     ...blend,
     // cullFace: false,
     cullFaceMode: context.Face.Front

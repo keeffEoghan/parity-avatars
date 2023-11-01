@@ -1,15 +1,5 @@
 // ...
 #pragma swap-at
-#if defined(USE_VERTEX_COLORS) || defined(USE_INSTANCED_COLOR)
-varying vec4 vColor;
-#endif
-#pragma swap-by
-// Custom shader start.
-varying vec4 vColor;
-// Custom shader end. Doesn't include match.
-#pragma swap-to
-// ...
-#pragma swap-at
 void main() {
 #pragma swap-by
 // Custom shader start.
@@ -55,26 +45,20 @@ vec3 x_atNoise(vec3 at) {
   #pragma glslify: x_toSDFNormal = require(glsl-sdf-normal, map=x_mapNoise)
 #endif
 
+varying vec3 x_position;
+
 // Custom shader end. Includes match.$&
 #pragma swap-to
 // ...
-// #pragma swap-at
-//     #ifdef USE_VERTEX_COLORS
-//       vColor = aVertexColor;
-//     #endif
-//   #endif
-// #pragma swap-at
-//   #ifdef USE_VERTEX_COLORS
-//     vColor = aVertexColor;
-//   #endif
-// #endif
 #pragma swap-at
-  #ifdef USE_NORMALS
-    normal = aNormal;
+    #ifdef USE_VERTEX_COLORS
+      vColor = aVertexColor;
+    #endif
   #endif
 #pragma swap-at
-#ifdef USE_NORMALS
-  normal = aNormal;
+  #ifdef USE_VERTEX_COLORS
+    vColor = aVertexColor;
+  #endif
 #endif
 #pragma swap-by
   // Custom shader end. Includes match.$&
@@ -85,12 +69,11 @@ vec3 x_atNoise(vec3 at) {
    * 2. Move `position` and `normal` by the noise samples
    */
 
-  // Sample the noise at the local-space `position`.
-  vec3 x_positionNoise = x_atNoise(position.xyz);
-  float x_distort = x_toNoise(x_positionNoise);
-
   // Move `position` by a given amount along the current `normal`.
   position.xyz += normal*x_distortSurface.x;
+
+  // Sample the noise at the local-space `position`.
+  vec3 x_positionNoise = x_atNoise(position.xyz);
 
   #ifdef x_orientToField
     normal = normalize(mix(normal,
@@ -98,13 +81,8 @@ vec3 x_atNoise(vec3 at) {
   #endif
 
   // Move `position` by the noise field sample along the new `normal`.
-  position.xyz += normal*x_distort*x_distortSurface.z;
-
-  #if !defined(USE_VERTEX_COLORS) && !defined(USE_INSTANCED_COLOR)
-    vColor = vec4(1);
-  #endif
-
-  vColor.a *= step(x_distortSurface.a, x_distort);
+  position.xyz += normal*x_toNoise(x_positionNoise)*x_distortSurface.z;
+  x_position = position.xyz;
 
   // Custom shader end.
 #pragma swap-to
