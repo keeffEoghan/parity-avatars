@@ -108,14 +108,8 @@ void main() {
 
   #ifdef x_orientToVolume
     // Orient the geometry to look along the volume normal.
-    // position.xyz = x_volumeOrient*position.xyz;
-    // normal = x_volumeOrient*normal;
     position = x_volumeOrient*position;
     normal = vec3(x_volumeOrient*vec4(normal, 0));
-  #endif
-  #ifdef x_clampToVolume
-    // Clamp position within the volume, move it back along the volume normal.
-    position.xyz -= x_volumeNormal*max(x_voxel.xyz, 0.0)*x_volumeSurface.y;
   #endif
 
   // Reapply transformations to `position`.
@@ -131,6 +125,11 @@ void main() {
   #endif
   #ifdef USE_INSTANCED_OFFSET
     position.xyz += aOffset;
+  #endif
+
+  #ifdef x_clampToVolume
+    // Clamp position within the volume, move it back along the volume normal.
+    position.xyz -= x_volumeNormal*max(x_voxel.xyz, 0.0)*x_volumeSurface.y;
   #endif
 
   #if !defined(DEPTH_PRE_PASS_ONLY) && !defined(DEPTH_PASS_ONLY)

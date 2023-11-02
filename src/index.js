@@ -4,13 +4,17 @@ import { load } from 'pex-io';
 import parseHDR from 'parse-hdr';
 import toNormals from 'geom-normals';
 import { invert44 } from '@thi.ng/matrices/invert';
+import { mulVQ } from '@thi.ng/matrices/mulv';
+import { mulQ } from '@thi.ng/matrices/mulq';
+import { X3 as x3, Y3 as y3, Z3 as z3 } from '@thi.ng/vectors/api';
 import { set3 } from '@thi.ng/vectors/set';
-import { setC2, setC3 } from '@thi.ng/vectors/setc';
+import { setC2, setC3, setC4 } from '@thi.ng/vectors/setc';
 import { mulN2, mulN3 } from '@thi.ng/vectors/muln';
 import { subN2 } from '@thi.ng/vectors/subn';
 import { addN2, addN3 } from '@thi.ng/vectors/addn';
 import { maddN3 } from '@thi.ng/vectors/maddn';
-import { normalize4 } from '@thi.ng/vectors/normalize';
+import { normalize3 } from '@thi.ng/vectors/normalize';
+import { dist3 } from '@thi.ng/vectors/dist';
 import { mixN3 } from '@thi.ng/vectors/mixn';
 import { mix } from '@thi.ng/math/mix';
 import { Smush32 as Random } from '@thi.ng/random';
@@ -43,13 +47,35 @@ const {
 
 const query = new URLSearchParams(location.search);
 
-const animate = (query.get('animate') !== 'false');
 const pauseOnBlur = (query.get('pause-on-blur') !== 'false');
 const shadows = parseInt(query.get('shadows') || 4, 10) || 0;
+const animate = (query.get('animate') !== 'false');
+const scatter = parseInt(query.get('scatter') || 1e3, 10) || 0;
+
+const growSteps = parseInt(query.get('grow-steps') || 6, 10) || 0;
+const growAxiom = query.get('grow-axiom') ?? '[!A]^^MAfF[&"!A]f[&"!A]AM[!!ffA]';
+
+const growRules = ((query.has('grow-rule'))? query.getAll('grow-rule')
+  : [
+        // Concentric.
+        // 'A->[fM"![^A&&A]-A++A]',
+        'A->;\\F[fM_?[^@@A&&@@A]-A++A]',
+        // 'M->[F_?[^M&&M]-M++M]',
+        // 'M->[F_?[^[fM]&&[fM]]-[fM]++[fM]]',
+        // M: [{ symbol: 'M', test: 1 }],
+        // Tree.
+        // 'M->-F+!M:0.40',
+        // 'M->+F-!M:0.40',
+        // 'M->~(30)[--"M]M:0.1',
+        // 'M->~(30)[++"M]M:0.1',
+    ]);
 
 const random = new Random(parseInt(query.get('seed') ?? '0x67229302'));
 const randomFloat = () => random.float();
 const randomInt = () => random.int();
+
+const axisAngleToQuat = (to, x, y, z, a) =>
+  normalize3(to, setC4(to, x, y, z, cos(a *= 0.5)), sin(a));
 
 // For `pex-renderer`'s `gltf` loader to play nicely with `parcel`'s asset hash.
 const gltfURL = (url) => url.href.replace(/\?.*$/, '');
@@ -107,12 +133,11 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     exposure: 0
   });
 
-  const ease = {
-    eps: 1e-4,
-    orbit: mix(1, 5e-2, animate), dof: mix(1, 3e-2, animate),
-    exposure: mix(1, 3e-2, animate), surface: mix(1, 1e-2, animate),
-    light: mix(1, 5e-2, animate)
-  };
+  const ease = ((animate)? {
+        eps: 1e-4,
+        orbit: 5e-2, dof: 3e-2, exposure: 3e-2, surface: 2e-2, light: 5e-2
+      }
+    : { eps: 0, orbit: 1, dof: 1, exposure: 1, surface: 1, light: 1 });
 
   const orbit = renderer.orbiter({
     element: canvas, target: [0, 0.1, 0.25], position: [-0.1, -0.1, 0],
@@ -180,19 +205,19 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     frag: '#define x_orientToField\n#define x_cellNoise 2\n'+distort.frag,
     uniforms: {
       // x_distortNoise: [12, 12, 1],
-      x_distortNoise: [2, 2, 2],
+      x_distortNoise: [4, 4, 4],
       x_distortSpeed: [0, 0, 5e-5],
       x_distortShake: 1,
-      // x_distortSurface: [3e-2, 0.1, 0.1, -1],
-      x_distortSurface: [1e-2, 0.1, 0.1, 0.8],
+      x_distortSurface: [3e-2, 0.1, 0.1, -1],
+      // x_distortSurface: [1e-2, 0.1, 0.1, 0.3],
       x_distortNormal: 1e-5,
       x_time: range(3)
     },
     metallic: 0.1, roughness: 0.9,
     castShadows: !!shadows, receiveShadows: !!shadows,
     // @todo Improve alpha blending and face-culling issues.
-    // alphaTest: 0.9,
-    alphaTest: 0.1,
+    alphaTest: 0.92,
+    // alphaTest: 0.08,
     ...blend,
     // cullFace: false,
     cullFaceMode: context.Face.Front
@@ -213,7 +238,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       : { root: renderer.entity([renderer.geometry(s())]) }),
     shapes, 0);
 
-  const shapeTo = { surfaceScale: 40 };
+  const shapeTo = { surfaceClamp: 1.5 };
 
   // console.log('shapeInVolume.vert', shapeInVolume.vert);
   // console.log('shapeInVolume.frag', shapeInVolume.frag);
@@ -229,7 +254,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       x_volumeInverse: [],
       // Starting the ramp off below 0, to grow the shapes in over time.
       x_volumeRamp: [-3e-2, 0, 0.15, 1],
-      x_volumeSurface: [0.1, -20],
+      x_volumeSurface: [0.1, -shapeTo.surfaceClamp*1.5],
       x_colors: map((v) => mulN3(v, v, 1/255),
         [[199, 134, 75, 1], [12, 24, 145, 1]], 0),
       x_colorNoise: [5, 5, 5, 3e-4],
@@ -246,93 +271,232 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   const onSphere = (angle, depth, to = []) =>
     mulN2(to, setC3(to, cos(angle), sin(angle), depth), sqrt(1-(depth*depth)));
 
-  const shapesInstances = map(() => ({ instances: 0 }), shapes);
+  const instancesShapes = map(() => ({ instances: 0 }), shapes);
+  const instancesAll = { instances: 0 };
 
-  const growth = new LSystem({
-    forceObjects: true,
-    axiom: 'A',
-    productions: {
-      // Concentric.
-      // A: '[F"![^A&&A]-A++A]',
-      A: [{ symbol: 'A', test: 1 }]
-      // Tree.
-      // A: '-F+!A:0.40',
-      // A: '+F-!A:0.40',
-      // A: '~(30)[--"A]A:0.1',
-      // A: '~(30)[++"A]A:0.1'
-    },
-    finals: {
-      A: ({ index, part }, ...etc) => console.log('A', index, part, ...etc),
-      F: ({ index, part }, ...etc) => console.log('F', index, part, ...etc),
-      /**
-       * @see [3D interactive demo](https://github.com/nylki/lindenmayer/blob/main/docs/examples/interactive_lsystem_builder/index_3d.html)
-       * @see [Houdini L-system syntax](https://www.sidefx.com/docs/houdini/nodes/sop/lsystem.html)
-       */
-      // 'F': pushSegment,
-      // '+': () => rotation.multiply(yPosRotation),
-      // '-': () => rotation.multiply(yNegRotation),
-      // '&': () => rotation.multiply(zNegRotation),
-      // '^': () => rotation.multiply(zPosRotation),
-      // '\\': () => rotation.multiply(xNegRotation),
-      // '<': () => rotation.multiply(xNegRotation),
-      // '/': () => rotation.multiply(xPosRotation),
-      // '>': () => rotation.multiply(xPosRotation),
-      // '|': () => rotation.multiply(yReverseRotation),
-      // '!': () => {
-      //   currentSegment.scale.set(currentSegment.scale.x, currentSegment.scale.y + 0.2, currentSegment.scale.z + 0.2);
-      //   colorIndex = Math.min(colors.length - 1, colorIndex + 1);
-      //   for (let face of currentSegment.geometry.faces) {
-      //     face.color.setHex(colors[colorIndex]);
-      //   }
-      //   currentSegment.geometry.colorsNeedUpdate = true;
-      // },
-      // '\'': () => {
-      //   currentSegment.scale.set(currentSegment.scale.x, currentSegment.scale.y - 0.2, currentSegment.scale.z - 0.2);
-      //   colorIndex = Math.max(0, colorIndex - 1);
-      //   for (let face of currentSegment.geometry.faces) {
-      //     face.color.setHex(colors[colorIndex]);
-      //   }
-      //   currentSegment.geometry.colorsNeedUpdate = true;
-      // },
-      // '[': () => stack.push(currentSegment.clone()),
-      // ']': () => currentSegment = stack.pop()
-    }
-  });
-
-  console.log(growth.axiom);
-  console.log(growth.iterate(1), growth.getString());
-  growth.final('?', '!');
-
-  const allInstances = reduce((all, _, i, a) => {
-      const to = wrap(randomInt(), shapesInstances);
+  scatter && reduce((all, _, i, a) => {
+      const to = wrap(randomInt(), instancesShapes);
       const allOffsets = (all.offsets ??= { data: a, divisor: 1 }).data;
-      const toOffsets = (to.offsets ??= { data: [], divisor: 1 }).data;
-      // const allRotations = (all.rotations ??= { data: [], divisor: 1 }).data;
-      // const toRotations = (to.rotations ??= { data: [], divisor: 1 }).data;
+      const offsets = (to.offsets ??= { data: [], divisor: 1 }).data;
+      const allRotations = (all.rotations ??= { data: [], divisor: 1 }).data;
+      const rotations = (to.rotations ??= { data: [], divisor: 1 }).data;
       const allScales = (all.scales ??= { data: [], divisor: 1 }).data;
-      const toScales = (to.scales ??= { data: [], divisor: 1 }).data;
+      const scales = (to.scales ??= { data: [], divisor: 1 }).data;
       const { radius, centre } = wrap(randomInt(), volumeBounds);
-      const p = onSphere(randomFloat()*tau, mix(-1, 1, randomFloat()));
 
-      toOffsets.push(allOffsets[i] = maddN3(null,
-        p, (randomFloat()**0.6)*radius, centre));
+      offsets.push(allOffsets[i] = maddN3(null,
+        onSphere(randomFloat()*tau, mix(-1, 1, randomFloat())),
+        (randomFloat()**0.6)*radius, centre));
 
-      // toRotations.push(allRotations[i] = normalize4(null,
-      //   map((v) => v*randomFloat(), [1, 1, 1, tau], 0)));
+      rotations.push(allRotations[i] = axisAngleToQuat(null,
+        randomFloat(), randomFloat(), randomFloat(), randomFloat()*tau));
 
-      toScales.push(allScales[i] = range(3, mix(2e-2, 5e-2, randomFloat())));
+      scales.push(allScales[i] = range(3, mix(2e-2, 5e-2, randomFloat())));
 
-      all.instances ??= a.length;
+      ++all.instances;
       ++to.instances;
 
       return all;
     },
-    range(3e3), {});
+    range(scatter), instancesAll);
 
-  // console.log(shapesInstances, allInstances);
+  const growth = {
+    instances: { all: instancesAll, shapes: instancesShapes },
+    // Current "turtle" state.
+    at: {
+      // Instance target.
+      shape: 0,
+      // Instance properties.
+      offset: [-0.01, 0.2, 0],
+      rotation: axisAngleToQuat([], ...y3, pi*0.08),
+      scale: range(3, 1),
+      // Step scales.
+      length: 5e-2,
+      width: 5e-2,
+      angle: pi*0.25,
+      // Step scale rates of change.
+      lengthRate: 1.2,
+      widthRate: 1.2,
+      angleRate: 1.2,
+      // Derived steps.
+      ahead: undefined,
+      yawR: undefined, yawL: undefined,
+      pitchD: undefined, pitchU: undefined,
+      rollCW: undefined, rollCCW: undefined
+    },
+    turnBack: axisAngleToQuat([], ...y3, pi),
+    rollOver: axisAngleToQuat([], ...z3, pi),
+    toInstance(to, shape, offset, rotation, scale) {
+      const { at, instances, toScale, toRotation, toOffset } = to;
+      const { all, shapes } = instances;
+      const s = to.shape = wrap(shape ??= at.shape, shapes);
+
+      (scale ??= [...toScale(to)]) &&
+        (all.scales ??= { data: [], divisor: 1 }).data.push(scale) &&
+        (s.scales ??= { data: [], divisor: 1 }).data.push(scale);
+
+      (rotation ??= [...toRotation(to)]) &&
+        (all.rotations ??= { data: [], divisor: 1 }).data.push(rotation) &&
+        (s.rotations ??= { data: [], divisor: 1 }).data.push(rotation);
+
+      if(offset ??= [...toOffset(to)]) {
+        let near;
+
+        const d = reduce((d, b) => {
+            const { radius: r, centre: c } = b;
+
+            (d > (d = dist3(offset, c)-r)) && (near = b);
+
+            return d;
+          },
+          volumeBounds, Infinity);
+
+        // @todo Wrap instead of clamp.
+        (d > 0) &&
+          mixN3(null, offset, near.centre, d/(d+near.radius));
+
+        offset &&
+          (all.offsets ??= { data: [], divisor: 1 }).data.push(offset) &&
+          (s.offsets ??= { data: [], divisor: 1 }).data.push(offset);
+      }
+
+      ++all.instances;
+      ++s.instances;
+
+      return s;
+    },
+    toOffset: ({ at: { offset: o, length: l, ahead } }, by = 0, size = l) =>
+      ((by)? maddN3(o, ahead, by*size, o) : o),
+    toScale: ({ at: { scale: s, width: w } }, by = 1, size) =>
+      mulN3(s, setC3(s, 1, 1, 1), by*(size ??= w)),
+    toRotation: ({ at, at: { rotation: r, ahead: h = at.ahead ??= [] } }, by) =>
+      mulVQ(h, ((by)? mulQ(r, r, by) : r), z3) && r,
+    toLength: ({ at }, by = 1) => at.length *= by,
+    toWidth: ({ at }, by = 1) => at.width *= by,
+    toAngle({ at }, by = 1) {
+      const { yawL, yawR, pitchD, pitchU, rollCW, rollCCW } = at;
+      let { angle } = at;
+      const d = (angle !== (angle = (at.angle *= by)));
+
+      (d || !yawR) && axisAngleToQuat(at.yawR ??= [], ...y3, -angle);
+      (d || !yawL) && axisAngleToQuat(at.yawL ??= [], ...y3, angle);
+      (d || !pitchD) && axisAngleToQuat(at.pitchD ??= [], ...x3, -angle);
+      (d || !pitchU) && axisAngleToQuat(at.pitchU ??= [], ...x3, angle);
+      (d || !rollCW) && axisAngleToQuat(at.rollCW ??= [], ...z3, -angle);
+      (d || !rollCCW) && axisAngleToQuat(at.rollCCW ??= [], ...z3, angle);
+    },
+    setup(to) {
+      to.toAngle(to);
+      to.toLength(to);
+      to.toWidth(to);
+      to.toRotation(to);
+      to.toOffset(to);
+      to.toScale(to);
+    },
+    branches: [],
+    finals: {
+      /**
+       * @see [3D interactive demo](https://github.com/nylki/lindenmayer/blob/main/docs/examples/interactive_lsystem_builder/index_3d.html)
+       * @see [Houdini L-system syntax](https://www.sidefx.com/docs/houdini/nodes/sop/lsystem.html)
+       */
+      /** Move forward, creating geometry. */
+      F: (i, to) => to.toOffset(to, 1, i.part.size) && to.toInstance(to),
+      /** Move forward half the length, creating geometry. */
+      H: (i, to) => to.toOffset(to, 0.5, i.part.size) && to.toInstance(to),
+      /** Move forward but don't record a vertex. */
+      G: (...etc) => console.warn('Growth L-system `G` final unused', ...etc),
+      /** Move forward, no geometry created. */
+      f: (i, to) => to.toOffset(to, 1, i.part.size),
+      /** Move forward a half length, no geometry created. */
+      h: (i, to) => to.toOffset(to, 0.5, i.part.size),
+      /** Copy geometry from leaf `J` at the turtle's position. */
+      J: (i, to) => to.toInstance(to, i.part.shape ?? 0),
+      /** Copy geometry from leaf `K` at the turtle's position. */
+      K: (i, to) => to.toInstance(to, i.part.shape ?? 1),
+      /** Copy geometry from leaf `M` at the turtle's position. */
+      M: (i, to) => to.toInstance(to, i.part.shape ?? randomInt()),
+      /** Apply tropism vector (gravity). */
+      T: (...etc) => console.warn('Growth L-system `T` final unused', ...etc),
+      /** Turn right by angle. */
+      '+': (i, to) => to.toRotation(to, i.part.by ?? to.at.yawR),
+      /** Turn left by angle. */
+      '-': (i, to) => to.toRotation(to, i.part.by ?? to.at.yawL),
+      /** Pitch down by angle. */
+      '&': (i, to) => to.toRotation(to, i.part.by ?? to.at.pitchD),
+      /** Pitch up by angle. */
+      '^': (i, to) => to.toRotation(to, i.part.by ?? to.at.pitchU),
+      /** Roll clockwise by angle. */
+      '\\': (i, to) => to.toRotation(to, i.part.by ?? to.at.rollCW),
+      /** Roll counter-clockwise by angle. */
+      '/': (i, to) => to.toRotation(to, i.part.by ?? to.at.rollCCW),
+      /** Turn back. */
+      '|': (i, to) => to.toRotation(to, i.part.by ?? to.turnBack),
+      /** Roll over. */
+      '*': (i, to) => to.toRotation(to, i.part.by ?? to.rollOver),
+      /** Pitch/roll/turn random amount up to angle. */
+      '~': (...etc) => console.warn('Growth L-system `~` final unused', ...etc),
+      /** Multiply current length by step size scale. */
+      '"': (i, to) => to.toLength(to, i.part.by ?? to.at.lengthRate),
+      /** Multiply current width by thickness scale. */
+      '!': (i, to) => to.toWidth(to, i.part.by ?? to.at.widthRate),
+      /** Multiply current angle by angle scale. */
+      ';': (i, to) => to.toAngle(to, i.part.by ?? to.at.angleRate),
+      /** Divide current length by step size scale. */
+      _: (i, to) => to.toLength(to, i.part.by ?? 1/to.at.lengthRate),
+      /** Divide current width by thickness scale. */
+      '?': (i, to) => to.toWidth(to, i.part.by ?? 1/to.at.widthRate),
+      /** Divide current angle by angle scale. */
+      '@': (i, to) => to.toAngle(to, i.part.by ?? 1/to.at.angleRate),
+      /** Push turtle state (start a branch). */
+      '[': (_, to) => {
+        const { at, toOffset: o, toRotation: r, toScale: s, branches } = to;
+
+        branches.push({
+          ...at,
+          ahead: undefined,
+          yawR: undefined, yawL: undefined,
+          pitchD: undefined, pitchU: undefined,
+          rollCW: undefined, rollCCW: undefined,
+          offset: [...o(to)], rotation: [...r(to)], scale: [...s(to)]
+        });
+      },
+      /** Pop turtle state (end a branch). */
+      ']': (_, to) => {
+        const { branches, setup } = to;
+
+        to.at = branches.pop();
+        setup(to);
+      }
+    }
+  };
+
+  const growthSystem = growth.system = new LSystem({
+    // forceObjects: true,
+    finals: growth.finals,
+    axiom: growAxiom,
+    productions: reduce((productions, r) => {
+        const [at, to] = r.split(/(?:=|(?:->))/);
+
+        productions[at] = to;
+
+        return productions;
+      },
+      growRules, {})
+  });
+
+  growth.setup(growth);
+  console.log(growthSystem.axiom, growthSystem.productions);
+  console.log(growthSystem.iterate(growSteps));
+  growthSystem.final(growth);
+
+  console.log(instancesShapes, instancesAll);
+
+  const shapeRoot = renderer.add(renderer.entity());
 
   shapes.forEach(({ root, entities }, s) => {
-    const shapeInstances = shapesInstances[s];
+    const shapeInstances = instancesShapes[s];
+
+    if(!shapeInstances.instances) { return; }
 
     function setup(e) {
       const g = e.getComponent('Geometry');
@@ -356,7 +520,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     }
 
     entities?.forEach?.(setup);
-    renderer.add(setup(root));
+    renderer.add(setup(root), shapeRoot);
   });
 
   const eyesTo = { scale: range(3, 3e-2), intensity: 0.2 };
@@ -371,7 +535,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
         renderer.pointLight({ intensity: 0, range: 1, castShadows: !!shadows })
       ]),
       volume),
-    [[-0.022, 0.106, 0.16], [0.065, 0.11, 0.135]], 0);
+    [[-0.022, 0.106, 0.158], [0.065, 0.11, 0.135]], 0);
 
   const pointLights = map(({ color, position }) =>
       renderer.add(renderer.entity([
@@ -402,7 +566,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     (0-rampMin > eps) && addN2(null, x_volumeRamp, mix(rampMin, 0, es)-rampMin);
 
     const skin = x_volumeSurface[1];
-    const skinTo = shapeTo.surfaceScale;
+    const skinTo = shapeTo.surfaceClamp;
 
     (abs(skin-skinTo) > eps) && (x_volumeSurface[1] = mix(skin, skinTo, es));
 
