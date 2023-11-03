@@ -15,12 +15,12 @@ vec3 x_atNoise(vec3 at) {
 }
 
 #ifdef x_cellNoise
-  uniform float x_distortShake;
+  uniform float x_distortJitter;
 
   #pragma glslify: x_noiseCell = require(glsl-worley/worley3D)
 
   float x_toNoise(vec3 at) {
-    vec2 f1f2 = x_noiseCell(at, x_distortShake, false);
+    vec2 f1f2 = x_noiseCell(at, x_distortJitter, false);
 
     #if (x_cellNoise >= 0) && (x_cellNoise < 2)
       return f1f2[x_cellNoise];
