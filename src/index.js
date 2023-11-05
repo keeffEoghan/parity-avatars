@@ -3,6 +3,8 @@ import getRenderer from 'pex-renderer';
 import { load } from 'pex-io';
 import parseHDR from 'parse-hdr';
 import toNormals from 'geom-normals';
+import screenshotter from 'canvas-screenshot';
+// import { Recorder, RecorderStatus, Encoders } from 'canvas-record';
 import { invert44 } from '@thi.ng/matrices/invert';
 import { mulVQ } from '@thi.ng/matrices/mulv';
 import { mulQ } from '@thi.ng/matrices/mulq';
@@ -60,8 +62,23 @@ const axisAngleToQuat = (to, x, y, z, a) =>
 
 const pauseOnBlur = api.pauseOnBlur = query.get('pause-on-blur') !== 'false';
 const shadows = api.shadows = parseFloat(query.get('shadows') || 4) || 0;
-let pause = api.pause = query.get('pause') === 'true';
-const animate = api.animate = query.get('animate') !== 'false';
+
+const state = api.state = {
+  pause: query.get('pause') === 'true',
+  animate: query.get('animate') !== 'false'
+};
+
+const screenshots = api.screenshots = ((query.get('screenshots') === 'true')?
+    [
+      { position: [0.17, 0.19, 0.74] },
+      { position: [0.42, 0.26, 0.58] },
+      { position: [-0.78, -0.19, -0.03] },
+      { position: [0.09, 0.14, 0.51] }
+    ]
+  : null);
+
+// const records = api.records = query.get('records') === 'true';
+
 const scatter = api.scatter = parseFloat(query.get('scatter') || 3e3) || 0;
 
 const fxaa = api.fxaa = query.get('fxaa') !== 'false';
@@ -284,16 +301,17 @@ const lightsColor = api.lightsColor = [
 const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
 (async () => {
-  const canvas = api.canvas = document.querySelector('canvas');
-  const context = api.context = getContext({ canvas });
+  const $canvas = api.$canvas = document.querySelector('canvas');
 
-  const renderer = api.renderer = getRenderer({
-    ctx: context, pauseOnBlur, shadowQuality: shadows
-  });
+  const context = api.context =
+    getContext({ canvas: $canvas, preserveDrawingBuffer: true });
 
-  const timer = api.timer = toTimer({ step: 1e3/60, loop: 1e8 });
+  const renderer = api.renderer =
+    getRenderer({ ctx: context, pauseOnBlur, shadowQuality: shadows });
 
   // console.log('pipeline', renderer.shaders.pipeline);
+
+  const timer = api.timer = toTimer({ step: 1e3/60, loop: 1e8 });
 
   const { skyHDR, volumeImg } = await load({
     skyHDR: { arrayBuffer: new URL('../media/sky-0.hdr', import.meta.url)+'' },
@@ -314,15 +332,17 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     exposure: 0
   });
 
-  const ease = api.ease = ((animate)? {
-        eps: 1e-4,
-        orbit: 5e-2, dof: 3e-2, exposure: 3e-2, surface: 2e-2, light: 5e-2
-      }
-    : { eps: 0, orbit: 1, dof: 1, exposure: 1, surface: 1, light: 1 });
+  const ease = api.ease = {
+    eps: 1e-4,
+    orbit: 5e-2, dof: 3e-2, exposure: 3e-2, surface: 2e-2, light: 5e-2
+  };
+
+  const easeNone = api.easeNone =
+    { eps: 0, orbit: 1, dof: 1, exposure: 1, surface: 1, light: 1 };
 
   const orbit = api.orbit = renderer.orbiter({
-    element: canvas, target: [0, 0.1, 0.25], position: [-0.1, -0.1, 0],
-    minDistance: 0.2, maxDistance: 1.5, easing: ease.orbit
+    position: [-0.1, -0.1, 0], target: [0, 0.1, 0.25],
+    element: $canvas, minDistance: 0.2, maxDistance: 1.5, easing: easeNone.orbit
   });
 
   const post = api.post = renderer.postProcessing({
@@ -335,6 +355,17 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
   const viewer = api.viewer =
     renderer.add(renderer.entity([camera, orbit, post]));
+
+  const orbitTo = {};
+
+  orbit.update();
+  orbitTo.matrix = orbit.matrix;
+  orbitTo.lat = orbit.lat;
+  orbitTo.lon = orbit.lon;
+  orbitTo.distance = orbit.distance;
+  orbitTo.currentLat = orbit.currentLat;
+  orbitTo.currentLon = orbit.currentLon;
+  orbitTo.currentDistance = orbit.currentDistance;
 
   const skyHDRData = api.skyHDRData = parseHDR(skyHDR);
   const { data: skyData, shape: [skyW, skyH] } = skyHDRData;
@@ -761,19 +792,43 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       volume),
     eyesAt, 0);
 
-  const pointLights = api.pointLights = map((position, i) =>
+  const pointLights = api.pointLights = map((c, i) =>
       renderer.add(renderer.entity([
-        renderer.pointLight({
-          intensity: 9, castShadows: !!shadows, color: lightsColor[i]
-        }),
-        renderer.transform({ position })
+        renderer.pointLight({ intensity: 9, castShadows: !!shadows, color: c }),
+        renderer.transform({ position: lightsAt[i], enabled: max(...c) > 0 })
       ])),
-    lightsAt, 0);
+    lightsColor, 0);
+
+  const toRecord = () => {};
+
+  // const tick = async () => {
+  //   render();
+
+  //   if(canvasRecorder.status !== RecorderStatus.Recording) return;
+  //   await canvasRecorder.step();
+
+  //   if(canvasRecorder.status !== RecorderStatus.Stopped) {
+  //     requestAnimationFrame(() => tick());
+  //   }
+  // };
+
+  // canvasRecorder = new Recorder(context,
+  //   { name: `avatar-${(new Date()).toISOString()}.mp4` });
+
+  // // Start and encode frame 0
+  // await canvasRecorder.start();
+
+  // // Animate to encode the rest
+  // tick(canvasRecorder);
 
   const draw = api.draw = () => {
+    const { pause, animate } = state;
+
     if(pause) { return; }
 
-    const { eps, dof: ed, exposure: ee, surface: es, light: el } = ease;
+    const { eps, dof: ed, exposure: ee, surface: es, light: el } =
+      ((animate)? ease : easeNone);
+
     const hus = bodyMaterialState.uniforms;
     const { x_time: ht } = hus;
     const sus = shapeMaterialState.uniforms;
@@ -796,10 +851,10 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
     volumeTransform.update();
     invert44(x_volumeInverse, volumeTransform.modelMatrix);
 
-    const d = orbit.distance;
     const dof = post.dofFocusDistance;
+    const d = orbit.distance;
 
-    (abs(d-dof) > eps) && post.set({ dofFocusDistance: mix(dof, d, ed) });
+    (abs(dof-d) > eps) && post.set({ dofFocusDistance: mix(dof, d, ed) });
 
     const expose = camera.exposure;
 
@@ -829,19 +884,49 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
     context.set({ width, height });
     camera.set({ viewport: [0, 0, width*pr, height*pr] });
-    draw();
   };
 
   resize();
   addEventListener('resize', resize);
 
+  const screenshot = api.screenshot = (to, id = '@') =>
+    new Promise((y) => context.frame(() => {
+      const { animate } = state;
+      const at = (new Date()).toISOString();
+
+      if(to) {
+        orbit.set(to);
+        orbit.update();
+      }
+
+      state.animate = false;
+      draw();
+      state.animate = animate;
+
+      y(screenshotter($canvas,
+        { filename: `${at}-${id}.png`, /* download: false */}));
+
+      // Only draw one frame.
+      return false;
+    }));
+
+  await screenshots?.reduce?.((wait, to, i) =>
+      wait.then(() => screenshot(to, i)),
+    Promise.resolve());
+
   addEventListener('keyup', ({ key: k }) =>
-      ((k === 'f')? canvas.requestFullscreen()
-      : ((k === ' ') && (pause = !pause))));
+    ((k === 'f')? $canvas.requestFullscreen()
+    : ((k === ' ')? (state.pause = !state.pause)
+    : ((k === 's')? screenshot()
+    : ((k === 'r') && toRecord())))));
+
+  orbit.set({ ...orbitTo });
+  orbit.update();
 
   orbit.set({
-    distance: mix(orbit.minDistance, orbit.maxDistance, 0.25),
-    lat: 10, lon: -70
+    easing: ((state.animate)? ease : easeNone).orbit,
+    lat: 10, lon: -70,
+    distance: mix(orbit.minDistance, orbit.maxDistance, 0.25)
   });
 
   context.frame(draw);
