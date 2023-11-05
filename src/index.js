@@ -1,3 +1,9 @@
+const {
+    AWS_URL: linkS3, AWS_BUCKET_NAME: bucketName, AWS_REGION: region,
+    AWS_ACCESS_SECRET: secretAccessKey, AWS_ACCESS_KEY_ID: accessKeyId
+  } = process.env;
+
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import getContext from 'pex-context';
 import getRenderer from 'pex-renderer';
 import { load } from 'pex-io';
@@ -299,6 +305,19 @@ const lightsColor = api.lightsColor = [
 
 // For `pex-renderer`'s `gltf` loader to play nicely with `parcel`'s asset hash.
 const gltfURL = (url) => url.href.replace(/\?.*$/, '');
+
+// Configure the S3 client with your AWS credentials
+const s3 = new S3Client({
+  region,
+  credentials: { accessKeyId, secretAccessKey }
+});
+
+async function toS3(to, key, type) {
+  const c = { Bucket: bucketName, Key: key, Body: to, ContentType: type };
+
+  try { console.log('S3 uploaded', c, await s3.send(new PutObjectCommand(c))); }
+  catch(e) { console.error('S3 error', c, e); }
+}
 
 (async () => {
   const $canvas = api.$canvas = document.querySelector('canvas');
@@ -889,7 +908,7 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
   resize();
   addEventListener('resize', resize);
 
-  const screenshot = api.screenshot = (to, id = '@') =>
+  const screenshot = api.screenshot = (to, id = '@', type = 'png') =>
     new Promise((y) => context.frame(() => {
       const { animate } = state;
       const at = (new Date()).toISOString();
@@ -903,8 +922,12 @@ const gltfURL = (url) => url.href.replace(/\?.*$/, '');
       draw();
       state.animate = animate;
 
-      y(screenshotter($canvas,
-        { filename: `${at}-${id}.png`, /* download: false */}));
+      const filename = `${at}-${id}.${type}`;
+      const shot = screenshotter($canvas, { filename, download: false });
+
+      /** POST screens to the bucket with info in the gitignored `.env`. */
+      toS3(shot, filename, 'image/'+type);
+      y(shot);
 
       // Only draw one frame.
       return false;

@@ -26,6 +26,7 @@
     "clean:parcel": "rm -rf ./.parcel-cache"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.441.0",
     "@epok.tech/fn-lists": "^0.1.4",
     "@epok.tech/fn-time": "^0.2.1",
     "@thi.ng/color": "^5.5.28",
