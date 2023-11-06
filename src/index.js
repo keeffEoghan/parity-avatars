@@ -1,5 +1,5 @@
 const {
-    AWS_URL: linkS3, AWS_BUCKET_NAME: bucketName, AWS_REGION: region,
+    AWS_BUCKET_NAME: bucketName, AWS_PATH: bucketPath, AWS_REGION: region,
     AWS_ACCESS_SECRET: secretAccessKey, AWS_ACCESS_KEY_ID: accessKeyId
   } = process.env;
 
@@ -58,6 +58,7 @@ const {
 
 const query = api.query = new URLSearchParams(location.search);
 
+const id = api.id = query.get('id') ?? 'id';
 const seed = api.seed = parseInt(query.get('seed') ?? 0x67229302) || 0;
 const random = new Random(seed);
 const randomFloat = () => random.float();
@@ -74,16 +75,26 @@ const state = api.state = {
   animate: query.get('animate') !== 'false'
 };
 
-const screenshots = api.screenshots = ((query.get('screenshots') === 'true')?
-    [
-      { position: [0.17, 0.19, 0.74] },
-      { position: [0.42, 0.26, 0.58] },
-      { position: [-0.78, -0.19, -0.03] },
-      { position: [0.09, 0.14, 0.51] }
-    ]
-  : null);
+const screenshots = api.screenshots = query.get('screenshots') === 'true';
+
+const screenshotsAt = api.screenshotsAt = ((!screenshots)? null : [
+  ((query.has('screenshot-at-0'))?
+      map((v) => parseFloat(v), query.getAll('screenshot-at-0'), 0)
+    : [0.17, 0.19, 0.74]),
+  ((query.has('screenshot-at-1'))?
+      map((v) => parseFloat(v), query.getAll('screenshot-at-1'), 0)
+    : [0.42, 0.26, 0.58]),
+  ((query.has('screenshot-at-2'))?
+      map((v) => parseFloat(v), query.getAll('screenshot-at-2'), 0)
+    : [-0.78, -0.19, -0.03]),
+  ((query.has('screenshot-at-3'))?
+      map((v) => parseFloat(v), query.getAll('screenshot-at-3'), 0)
+    : [0.09, 0.14, 0.51])
+]);
 
 // const records = api.records = query.get('records') === 'true';
+
+const upload = api.upload = query.get('upload') === 'true';
 
 const scatter = api.scatter = parseFloat(query.get('scatter') || 3e3) || 0;
 
@@ -110,7 +121,8 @@ const distortSpeed = api.distortSpeed = ((query.has('distort-speed'))?
     map((v) => parseFloat(v) || 0, query.getAll('distort-speed'), 0)
   : [0, 0, 5e-5]);
 
-const distortJitter = api.distortJitter = parseFloat(query.get('distort-jitter') || 1) || 0;
+const distortJitter = api.distortJitter =
+  parseFloat(query.get('distort-jitter') || 1) || 0;
 
 const distortSurface = api.distortSurface = ((query.has('distort-surface'))?
     map((v) => parseFloat(v) || 0, query.getAll('distort-surface'), 0)
@@ -312,11 +324,13 @@ const s3 = new S3Client({
   credentials: { accessKeyId, secretAccessKey }
 });
 
-async function toS3(to, key, type) {
-  const c = { Bucket: bucketName, Key: key, Body: to, ContentType: type };
+async function toS3(to, name, type) {
+  const c = {
+    Bucket: bucketName, Key: bucketPath+name, Body: to, ContentType: type
+  };
 
   try { console.log('S3 uploaded', c, await s3.send(new PutObjectCommand(c))); }
-  catch(e) { console.error('S3 error', c, e); }
+  catch(e) { console.warn('S3 error', c, e); }
 }
 
 (async () => {
@@ -897,45 +911,52 @@ async function toS3(to, key, type) {
     renderer.draw();
   };
 
-  const resize = api.resize = () => {
+  const resize = api.resize = (drew) => {
     const { innerWidth: width, innerHeight: height } = self;
     const { pixelRatio: pr } = context;
 
     context.set({ width, height });
     camera.set({ viewport: [0, 0, width*pr, height*pr] });
+
+    context.frame(() => {
+      draw();
+      drew?.();
+
+      // Draw only one frame.
+      return false;
+    });
   };
 
-  resize();
-  addEventListener('resize', resize);
+  const resized = new Promise((y) => resize(y));
 
-  const screenshot = api.screenshot = (to, id = '@', type = 'png') =>
+  addEventListener('resize', () => resize());
+
+  const screenshot = api.screenshot = (to, p = id, s = '@', type = 'png') =>
     new Promise((y) => context.frame(() => {
       const { animate } = state;
       const at = (new Date()).toISOString();
 
-      if(to) {
-        orbit.set(to);
-        orbit.update();
-      }
-
+      to && orbit.set(to);
+      orbit.update();
       state.animate = false;
       draw();
       state.animate = animate;
 
-      const filename = `${at}-${id}.${type}`;
-      const shot = screenshotter($canvas, { filename, download: false });
+      const filename = `${p}-${at}-${s}.${type}`;
+      const shot = screenshotter($canvas, { filename, download: !upload });
 
-      /** POST screens to the bucket with info in the gitignored `.env`. */
-      toS3(shot, filename, 'image/'+type);
+      /** `POST` screens to the bucket with info in the gitignored `.env`. */
+      upload && toS3(shot, filename, 'image/'+type);
       y(shot);
 
-      // Only draw one frame.
+      // Draw only one frame.
       return false;
     }));
 
-  await screenshots?.reduce?.((wait, to, i) =>
-      wait.then(() => screenshot(to, i)),
-    Promise.resolve());
+  await ((!screenshots)? resized
+    : screenshotsAt.reduce((wait, at, i) =>
+          wait.then(() => screenshot({ position: at }, id, i)),
+        resized));
 
   addEventListener('keyup', ({ key: k }) =>
     ((k === 'f')? $canvas.requestFullscreen()
