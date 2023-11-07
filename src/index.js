@@ -100,8 +100,8 @@ const state = api.state = {
 const screenshots = api.screenshots = query.get('screenshots') === 'true';
 
 /**
- * Any camera positions to capture screenshots from.
- * Up to 4 positions, denoted `screenshot-at-0` to `screenshot-at-3`.
+ * Camera `number` positions to capture screenshots from, up to 4 denoted
+ * `screenshot-at-0` to `screenshot-at-3`.
  *
  * 3 `number` values per position, 1 per-axis, like
  * `screenshot-at-0=0&screenshot-at-0=1&screenshot-at-0=2`.
@@ -127,8 +127,11 @@ const screenshotsAt = api.screenshotsAt = ((!screenshots)? null : [
 
 // const records = api.records = query.get('records') === 'true';
 
-/** Flag `boolean` to upload screenshots to `S3`, or local download. */
-const upload = api.upload = query.get('upload') === 'true';
+/**
+ * Flag `boolean` to upload screenshots to `S3`, or local download otherwise.
+ * Default is `true`.
+ */
+const upload = api.upload = query.get('upload') !== 'false';
 
 /** Flag `boolean` to use the anti-aliasing post-process. Default is `true`. */
 const fxaa = api.fxaa = query.get('fxaa') !== 'false';
@@ -149,22 +152,22 @@ const bloom = api.bloom = query.get('bloom') !== 'false';
 const fog = api.fog = query.get('fog') !== 'false';
 
 /**
- * The fog `CSS` color `string`, like `#09f` (may need to `URL`-encode).
+ * The fog CSS color `string`, like `#09f` (may need `URL`-encoding).
  * Default is `#1e1e1e`.
  */
 const fogColor = api.fogColor = color(query.get('fog-color') || '#1e1e1e')
   .buf.slice(0, 3);
 
 /**
- * Flag `boolean` to calculate surface normals for the distorted body.
+ * Distorted body flag `boolean` to calculate surface normals.
  * Default is `true`.
  */
 const distortOrient = api.distortOrient =
   query.get('distort-orient') !== 'false';
 
 /**
- * Flag `boolean` or `number` value to use cell-noise for the distorted body,
- * and if so which type.
+ * Distorted body flag `boolean` or `number` value to use cell-noise, and if so
+ * which type.
  *
  * Given as `false` (uses classic noise); or a `number` (cell-noise type):
  * - `0`: nearest cell.
@@ -178,8 +181,9 @@ let distortCell = query.get('distort-cell') || 2;
 distortCell = api.distortCell = ((distortCell !== 'false') && distortCell);
 
 /**
- * Noise input `number` scaling values per-axis, for the distorted body.
+ * Distorted body noise input `number` scaling values per-axis.
  * 3 values, like `distort-noise=0&distort-noise=1&distort-noise=2`.
+ * Default is `4`, `4`, `4` for `x`, `y`, `z` scales.
  */
 const distortNoise = api.distortNoise = ((query.has('distort-noise'))?
     map((v) => parseFloat(v) || 0, query.getAll('distort-noise'), 0)
@@ -187,7 +191,7 @@ const distortNoise = api.distortNoise = ((query.has('distort-noise'))?
   : [4, 4, 4]);
 
 /**
- * Noise input `number` velocity values, per-axis, for the distorted body.
+ * Distorted body noise input `number` velocity values, per-axis.
  * 3 values, like `distort-speed=0&distort-speed=1&distort-speed=2`.
  */
 const distortSpeed = api.distortSpeed = ((query.has('distort-speed'))?
@@ -195,7 +199,7 @@ const distortSpeed = api.distortSpeed = ((query.has('distort-speed'))?
   : [0, 0, 5e-5]);
 
 /**
- * Cell-noise `number` jitter amount for the distorted body.
+ * Distorted body cell-noise `number` jitter amount.
  * No jitter at `0` gives a linear grid; full jitter at `1` gives organic cells.
  * Default is `1`.
  */
@@ -203,7 +207,7 @@ const distortJitter = api.distortJitter =
   parseFloat(query.get('distort-jitter') || 1) || 0;
 
 /**
- * Distortion `number` amounts for the distorted body.
+ * Distorted body distortion `number` amounts.
  * 4 values, like
  * `distort-surface=0&distort-surface=1&distort-surface=2&distort-surface=3`.
  *
@@ -218,15 +222,11 @@ const distortSurface = api.distortSurface = ((query.has('distort-surface'))?
   : [1e-2, 0.1, 0.1, 0.3]);
   // : [3e-2, 0.1, 0.1, -1]);
 
-/**
- * Metallic `number` value of physically-based-rendering of the distorted body.
- */
+/** Distorted body metallic `number` value for physically-based-rendering. */
 const distortMetal = api.distortMetal =
   parseFloat(query.get('distort-metal') || 0.1) || 0;
 
-/**
- * Roughness `number` value of physically-based-rendering of the distorted body.
- */
+/** Distorted body roughness `number` value for physically-based-rendering. */
 const distortRough = api.distortRough =
   parseFloat(query.get('distort-rough') || 0.9) || 0;
 
@@ -279,99 +279,191 @@ const volumeRamp = api.volumeRamp = [0, 3e-2, 0.15, 1];
 const volumeClamp = api.volumeClamp =
   parseFloat(query.get('volume-clamp') || 1.5);
 
+/**
+ * Shape CSS color `string` range, like `#09f` (may need `URL`-encoding).
+ * The 2 colors that are mixed between by the shape's color-noise field, and
+ * applied to each shape.
+ * 2 values, like `shape-color=red&shape-color=blue`.
+ * Default is `#d17521` and `#0d1ec7`.
+ */
 const shapeColors = api.shapeColors = map((c) => color(c).buf,
     ((query.has('shape-color'))? query.getAll('shape-color')
       : ['#d17521', '#0d1ec7']),
   0);
 
+/**
+ * Distorted body noise input `number` scaling values per-axis.
+ *
+ * 4 values, like
+ * `shape-color-noise=0&shape-color-noise=1&shape-color-noise=2&shape-color-noise=3`.
+ *
+ * Default is `5`, `5`, `5` for `x`, `y`, `z` scales; and `0.0003` time-scale.
+ */
 const shapeColorNoise = api.shapeColorNoise = ((query.has('shape-color-noise'))?
     map((v) => parseFloat(v), query.getAll('shape-color-noise'), 0)
   : [5, 5, 5, 3e-4]);
 
+/** Shape metallic `number` value for physically-based-rendering. */
 const shapeMetal = api.shapeMetal =
   parseFloat(query.get('shape-metal') || 0.7) || 0;
 
+/** Shape roughness `number` value for physically-based-rendering. */
 const shapeRough = api.shapeRough =
   parseFloat(query.get('shape-rough') || 0.3) || 0;
 
+/**
+ * Shape scale `number` value range, a start-end scale range the shapes vary
+ * over according to their position relative to the volume.
+ * 2 values, like `shape-scale=0&shape-scale=1`.
+ * Default is `0.02` start scale, `0.05` end scale.
+ */
 const shapeScales = api.shapeScales = ((query.has('shape-scale'))?
     map((v) => parseFloat(v), query.getAll('shape-scale'), 0)
   : [2e-2, 5e-2]);
 
+/**
+ * Shape geometry `string` names to use when generating shapes.
+ * Any number of values, like `shape=cube-f&shape=cone-g` and any others.
+ * Default is `cube-f`, `tetrahedron-f`.
+ */
 const useShapes = api.useShapes = ((query.has('shape'))? query.getAll('shape')
   : ['cube-f', 'tetrahedron-f']);
 
-/** How many instances to scatter randomly before growing the L-system. */
-const scatter = api.scatter = parseFloat(query.get('scatter') || 3e3) || 0;
+/**
+ * Scatter `number` of shape instances randomly before growing the L-system.
+ * Default is `600`.
+ */
+const scatter = api.scatter = parseFloat(query.get('scatter') || 6e2) || 0;
 
-/** Whether the scatter applies instance offsets. */
+/** Scatter flag `boolean` to use offset instances. Default is `true`. */
 const scatterOffsets = api.scatterOffsets =
   query.get('scatter-offsets') !== 'false';
 
 /**
- * Whether the scatter applies instance rotations.
+ * Scatter flag `boolean` to use rotate instances.
  * Leave disabled to better see shapes align to the volume surface.
+ * Default is `false`.
  */
 const scatterRotates = api.scatterRotates =
   query.get('scatter-rotates') === 'true';
 
-/** Whether the scatter applies instance scales. */
+/** Scatter flag `boolean` to use scale instances. Default is `true`. */
 const scatterScales = api.scatterScales =
   query.get('scatter-scales') !== 'false';
 
-/** How many L-system grow steps to iterate. */
-const growSteps = api.growSteps = parseInt(query.get('grow-steps') || 0) || 0;
+/**
+ * Flag `boolean` to grow an L-system at each scattered point, or use it as a
+ * single separate processes otherwise.
+ *
+ * Caution! Can be costly at high settings or inputs, and is combinatorially
+ * explosive with scatter and grow amounts.
+ *
+ * Default is `true`.
+ */
+const scatterGrow = api.scatterGrow = query.get('scatter-grow') !== 'false';
 
-/** Whether the L-system growth applies instance offsets. */
+/** Grow L-system `number` of steps to iterate. Default is `2`. */
+const growSteps = api.growSteps = parseInt(query.get('grow-steps') || 2) || 0;
+
+/** Grow L-system flag `boolean` to use offset instances. Default is `true`. */
 const growOffsets = api.growOffsets = query.get('grow-offsets') !== 'false';
 
 /**
- * Whether the L-system growth applies instance rotations.
+ * Grow L-system flag `boolean` to use rotate instances.
  * Leave disabled to better see shapes align to the volume surface.
+ * Default is `false`.
  */
 const growRotates = api.growRotates = query.get('grow-rotates') === 'true';
 
-/** Whether the L-system growth applies instance scales. */
+/** Grow L-system flag `boolean` to use scale instances. Default is `true`. */
 const growScales = api.growScales = query.get('grow-scales') !== 'false';
 
 // Instance properties.
 
+/**
+ * Grow L-system `number` offset position to start growing from.
+ *
+ * 3 `number` values, 1 per-axis, like
+ * `grow-offset=0&grow-offset=1&grow-offset=2`.
+ *
+ * Ignored if `scatter-grow` is `true`, as scattered instances are used instead.
+ * Default is `-0.01`, `0.2`, `0` (in the middle of the bust's head).
+ */
 const growOffset = api.growOffset = ((query.has('grow-offset'))?
     map((v) => parseFloat(v), query.getAll('grow-offset'), 0)
   : [-0.01, 0.2, 0]);
 
+/**
+ * Grow L-system `number` rotation to start growing from.
+ *
+ * 4 `number` values, as a quaternion rotation, like
+ * `grow-rotate=0&grow-rotate=1&grow-rotate=2&grow-rotate=3`.
+ *
+ * Ignored if `scatter-grow` is `true`, as scattered instances are used instead.
+ * Default is a `y`-axis rotation (rotated to face out from the bust's head).
+ */
 const growRotate = api.growRotate = ((query.has('grow-rotate'))?
     map((v) => parseFloat(v), query.getAll('grow-rotate'), 0)
   : axisAngleToQuat([], ...y3, pi*0.08));
 
+/**
+ * Grow L-system `number` scale to start growing from.
+ * 1 `number` value, uniform across all axes, like `grow-scale=1`.
+ * Ignored if `scatter-grow` is `true`, as scattered instances are used instead.
+ * Default is halfway between the `shape-scale` range.
+ */
 const growScale = api.growScale =
   parseFloat(query.get('grow-scale') || mix(...shapeScales, 0.5)) || 0;
 
 // Step scales.
 
+/**
+ * Grow L-system `number` length to advance offset at each growth step.
+ * Default is `0.03`.
+ */
 const growLength = api.growLength =
-  parseFloat(query.getAll('grow-length') || 7e-2) || 0;
+  parseFloat(query.get('grow-length') || 3e-2) || 0;
 
+/**
+ * Grow L-system `number` angle to rotate by at each growth step.
+ * This value is multiplied by `pi` to convert it to an angle.
+ * Default is `0.25`, giving a 45 degree angle.
+ */
 const growAngle = api.growAngle =
-  parseFloat(query.getAll('grow-angle') || 0.25)*pi || 0;
+  parseFloat(query.get('grow-angle') || 0.25)*pi || 0;
 
 // Step scale rates of change.
 
+/**
+ * Grow L-system `number` length rate to change the `grow-length` by rules.
+ * The rate of change, used to either multiply or divide the step amount.
+ * Default is `1.2`, giving a 20% increase or decrease any time a rule uses it.
+ */
 const growLengthRate = api.growLengthRate =
-  parseFloat(query.getAll('grow-length-rate') || 1.2) || 0;
+  parseFloat(query.get('grow-length-rate') || 1.2) || 0;
 
+/**
+ * Grow L-system `number` scale rate to change the `grow-scale` by rules.
+ * The rate of change, used to either multiply or divide the step amount.
+ * Default is `1.2`, giving a 20% increase or decrease any time a rule uses it.
+ */
 const growWidthRate = api.growWidthRate =
-  parseFloat(query.getAll('grow-width-rate') || 1.2) || 0;
+  parseFloat(query.get('grow-width-rate') || 1.2) || 0;
 
+/**
+ * Grow L-system `number` angle rate to change the `grow-angle` by rules.
+ * Default is `1.2`, giving a 20% increase or decrease any time a rule uses it.
+ */
 const growAngleRate = api.growAngleRate =
-  parseFloat(query.getAll('grow-angle-rate') || 1.2) || 0;
+  parseFloat(query.get('grow-angle-rate') || 1.2) || 0;
 
 /**
  * L-system grow axiom and rules.
- * Original set: `FHGfhJKMT+-&^\/|*~"!;_?@[]<>`.
- * URL aliases: `FHGfhJKMT -$^\/|*~"!;_.@[]<>`.
+ * Original set, based on the Houdini syntax: `FHGfhJKMT+-&^\/|*~"!;_?@[]<>`.
+ * URL aliases, substitutions for URL-encodings: `FHGfhJKMT -$^\/|*~"!;_.@[]<>`.
  *
- * Each rule:
+ * Each rule is a character that's mapped to an instruction, and can be replaced
+ * by new character by iterating the L-system growth:
  * - `F`: Move forward, creating geometry.
  * - `H`: Move forward half the length, creating geometry.
  * - `G`: Move forward but don't record a vertex.
@@ -406,75 +498,124 @@ const growAngleRate = api.growAngleRate =
  * @see [Houdini L-system recipes](https://www.houdinikitchen.net/2019/12/21/how-to-create-l-systems/)
  */
 
-const growAxiom = api.growAxiom = query.get('grow-axiom') ?? '^^M';
-// const growAxiom = api.growAxiom = query.get('grow-axiom') ?? '^A^A[fA]fA^[--fA][++fA]';
-// const growAxiom = api.growAxiom = query.get('grow-axiom') ?? '^A^A^A';
-
-const growRules = api.growRules = ((query.has('grow-rule'))?
-    // Aliases for parsing via URL.
-    map((r) => r.replace(` `, `+`).replace(`$`, `&`).replace(`.`, `?`),
-      query.getAll('grow-rule'), 0)
-  : [
-        // Concentric.
-        // 'A->[fM"![^A&&A]-A++A]',
-        // 'A->;\\@fM[_?[^A&A]-A++A]',
-        // 'M->[F_?[^M&&M]-M++M]',
-        // 'M->[F_?[^[fM]&&[fM]]-[fM]++[fM]]',
-        // M: [{ symbol: 'M', test: 1 }],
-        // Tree.
-        'F->/fM[+F]\\fM[-F]F',
-        'M->/fM[+F]\\fM[-F]F'
-        // 'A->AF[+AF]AF[-AF]AF',
-        // 'M->-F+!M:0.40',
-        // 'M->+F-!M:0.40',
-        // 'M->~(30)[--"M]M:0.1',
-        // 'M->~(30)[++"M]M:0.1',
-    ]);
+const ruleURL = (rule) =>
+  rule.replace(` `, `+`).replace(`$`, `&`).replace(`.`, `?`);
 
 /**
- * Grow an L-system at each scattered point, separate processes otherwise.
+ * Grow L-system `string` axiom rule, to start the L-system growth to be
+ * replaced according to the `grow-rules`.
+ * Default is `^^A`.
  *
- * Caution, can be very costly at high settings or inputs, combinatorially
- * explosive with scatter and grow amounts!
- *
- * Default is `false`.
+ * @see Full L-system grow-rules for their meaning.
  */
-const scatterGrow = api.scatterGrow = query.get('scatter-grow') === 'true';
+const growAxiom = api.growAxiom = ruleURL(query.get('grow-axiom') ?? '^^A');
 
+/**
+ * Grow L-system `string` production rules, to iterate the L-system growth by
+ * replacing the `grow-axiom`.
+ * Any number of values, like `grow-rule=A->FA&grow-rule=F->AF` and any others.
+ * Default is `A->M[F"![^A&&A]-A++A]`, growing a simple concentric form.
+ *
+ * @see Full L-system grow-rules for their meaning.
+ */
+const growRules = api.growRules = ((query.has('grow-rule'))?
+    map(ruleURL, query.getAll('grow-rule'), 0)
+  : [
+        // Tree (c) by edge-rewriting from Houdini Kitchen.
+        // 'F->F[+F]F[-F]F',
+        // Variations...
+        // 'F->F[_?@\\&+F]F[_?@/^-F]F',
+        // 'A->MF'
+
+        // Tree (e) by node-rewriting from Houdini Kitchen.
+        // 'A->F[+A][-A]FA',
+        // 'A->MF',
+        // Variations...
+        // 'F->/F[+A]\\f[-A]F',
+        // 'F->fMfM',
+
+        // Tree (f) by node-rewriting from Houdini Kitchen.
+        // 'A->F-[[A]+A]+F[+FA]-A',
+        // 'A->MF',
+
+        // Concentric by Shadi.
+        // 'A->[F"![^A&&A]-A++A]',
+        // Variations...
+        'A->M[F"![^A&&A]-A++A]',
+
+        // Tree by Shadi.
+        // 'A->-F+!A:0.40',
+        // 'A->+F-!A:0.40',
+        // 'A->~(30)[--"A]A:0.1',
+        // 'A->~(30)[++"A]A:0.1',
+    ]);
+
+/** Eye `number` scale, uniform across all axes. Default is `0.03`. */
 const eyeScale = api.eyeScale =
   range(3, parseFloat(query.get('eye-scale') || 3e-2) || 0);
 
+/** Eye `number` intensity of light emitted. Default is `0.2`. */
 const eyeIntense = api.eyeIntense =
   parseFloat(query.get('eye-intense') || 0.2) || 0;
 
-const eyeAlpha = api.eyeAlpha =
-  parseFloat(query.get('eye-alpha') || 0.6) || 0;
+/** Eye `number` alpha transparency. Default is `0.6`. */
+const eyeAlpha = api.eyeAlpha = parseFloat(query.get('eye-alpha') || 0.6) || 0;
 
-const eyeEmit = api.eyeEmit = parseFloat(query.get('eye-emit') || 2) || 0;
+/**
+ * Eye CSS color `string`, like `#09f` (may need `URL`-encoding).
+ * Color of the eye shape and the light it emits.
+ * Default is `#fff` (white).
+ */
 const eyeColor = api.eyeColor = color(query.get('eye-color') || '#fff').buf;
 
+/** Eye `number` emissive color, scales `eye-color`. Default is `2`. */
+const eyeEmit = api.eyeEmit = parseFloat(query.get('eye-emit') || 2) || 0;
+
+/**
+ * Eye `number` positions, up to 2 denoted `eye-l` and `eye-r`.
+ *
+ * 3 `number` values per position, 1 per-axis, like
+ * `eye-l=0&eye-l=1&eye-l=2` and `eye-r=3&eye-r=4&eye-r=5`.
+ *
+ * To disable an eye, pass any non-`number` value.
+ * Default is 2 valid eye positions.
+ */
 const eyesAt = api.eyesAt = [
-  ((query.has('eye-l'))? map((v) => parseFloat(v), query.getAll('eye-l'), 0)
-    : [-0.022, 0.106, 0.158]),
-  ((query.has('eye-r'))? map((v) => parseFloat(v), query.getAll('eye-r'), 0)
-    : [0.065, 0.11, 0.135])
-];
+    ((query.has('eye-l'))? map((v) => parseFloat(v), query.getAll('eye-l'), 0)
+      : [-0.022, 0.106, 0.158]),
+    ((query.has('eye-r'))? map((v) => parseFloat(v), query.getAll('eye-r'), 0)
+      : [0.065, 0.11, 0.135])
+  ]
+  .filter((at) => !isNaN(min(...at)));
 
+/**
+ * Lights `number` positions, up to 4 denoted `lit-at-0` to `lit-at-3`.
+ *
+ * 3 `number` values per position, 1 per-axis, like
+ * `lit-at-0=0&lit-at-0=1&lit-at-0=2`.
+ *
+ * To disable a light, pass any non-`number` value.
+ * Default is 4 valid light positions.
+ */
 const lightsAt = api.lightsAt = [
-  ((query.has('lit-at-0'))?
-      map((v) => parseFloat(v), query.getAll('lit-at-0'), 0)
-    : [-1, -1, -1]),
-  ((query.has('lit-at-1'))?
-      map((v) => parseFloat(v), query.getAll('lit-at-1'), 0)
-    : [-1, 1, 1]),
-  ((query.has('lit-at-2'))?
-      map((v) => parseFloat(v), query.getAll('lit-at-2'), 0)
-    : [1, -1, -1]),
-  ((query.has('lit-at-3'))?
-      map((v) => parseFloat(v), query.getAll('lit-at-3'), 0)
-    : [1, 1, 1])
-];
+    ((!query.has('lit-at-0'))? [-1, -1, -1]
+      : map((v) => parseFloat(v), query.getAll('lit-at-0'), 0)),
+    ((!query.has('lit-at-1'))? [-1, 1, 1]
+      : map((v) => parseFloat(v), query.getAll('lit-at-1'), 0)),
+    ((!query.has('lit-at-2'))? [1, -1, -1]
+      : map((v) => parseFloat(v), query.getAll('lit-at-2'), 0)),
+    ((!query.has('lit-at-3'))? [1, 1, 1]
+      : map((v) => parseFloat(v), query.getAll('lit-at-3'), 0))
+  ]
+  .filter((at) => !isNaN(min(...at)));
 
+/**
+ * Lights CSS color `string` values, like `#09f` (may need `URL`-encoding), up
+ * to 4 denoted `lit-color-0` to `lit-color-3`, like
+ * `lit-color-0=red&lit-color-1=blue&lit-color-2=green&lit-color-3=white`.
+ * To disable a light, pass a value resulting in black.
+ * Default is 4 light colors.
+ */
 const lightsColor = api.lightsColor = [
   color(query.get('lit-color-0') || '#00f').buf,
   color(query.get('lit-color-1') || '#00f').buf,
@@ -485,7 +626,6 @@ const lightsColor = api.lightsColor = [
 // For `pex-renderer`'s `gltf` loader to play nicely with `parcel`'s asset hash.
 const gltfURL = (url) => url.href.replace(/\?.*$/, '');
 
-// Configure the S3 client with your AWS credentials
 const s3 = new S3Client({
   region,
   credentials: { accessKeyId, secretAccessKey }
@@ -779,7 +919,7 @@ async function toS3(to, at, type) {
       const { all, shapes } = instances;
       const s = to.shape = wrap(shape ??= at.shape, shapes);
 
-      if(growOffsets && (offset ??= [...toOffset(to)])) {
+      if(growOffsets && (offset ??= toOffset(to)?.slice?.())) {
         let near;
 
         // Distance outside the nearest volume.
@@ -803,11 +943,11 @@ async function toS3(to, at, type) {
         instanced(s, 'offsets').push(offset);
       }
 
-      growRotates && (rotation ??= [...toRotation(to)]) &&
+      growRotates && (rotation ??= toRotation(to)?.slice?.()) &&
         instanced(all, 'rotations').push(rotation) &&
         instanced(s, 'rotations').push(rotation);
 
-      growScales && (scale ??= [...toScale(to)]) &&
+      growScales && (scale ??= toScale(to)?.slice?.()) &&
         instanced(all, 'scales').push(scale) &&
         instanced(s, 'scales').push(scale);
 
@@ -1004,12 +1144,15 @@ async function toS3(to, at, type) {
       volume),
     eyesAt, 0);
 
-  const pointLights = api.pointLights = map((c, i) =>
-      renderer.add(renderer.entity([
-        renderer.pointLight({ intensity: 9, castShadows: !!shadows, color: c }),
-        renderer.transform({ position: lightsAt[i], enabled: max(...c) > 0 })
-      ])),
-    lightsColor, 0);
+  const pointLights = api.pointLights = map((position, i) => {
+      const color = lightsColor[i];
+
+      return renderer.add(renderer.entity([
+        renderer.pointLight({ intensity: 9, castShadows: !!shadows, color }),
+        renderer.transform({ position, enabled: max(...color) > 0 })
+      ]))
+    },
+    lightsAt, 0);
 
   const toRecord = () => {};
 
@@ -1110,14 +1253,18 @@ async function toS3(to, at, type) {
 
   addEventListener('resize', () => resize());
 
+  /** @todo Fix broken first image, never seems to be in the right place. */
   const screenshot = api.screenshot = (to, p = id, s = '@', type = 'png') =>
     new Promise((y) => context.frame(() => {
       const { animate } = state;
       const at = (new Date()).toISOString().replace(/(:|\.)/gi, '-');
 
-      to && orbit.set(to);
-      orbit.update();
-      state.animate = false;
+      if(to) {
+        state.animate = false;
+        orbit.set(to);
+        orbit.update();
+      }
+
       draw();
       state.animate = animate;
 
