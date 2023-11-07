@@ -69,7 +69,7 @@ const onSphere = (angle, depth, to = []) =>
 const query = api.query = new URLSearchParams(location.search);
 
 /**
- * The string ID of the avatar distinguishes its assets in the bucket/folder.
+ * The `string` ID of the avatar distinguishes its assets in the bucket/folder.
  * Default is `id`.
  */
 const id = api.id = query.get('id') ?? 'id';
@@ -96,7 +96,7 @@ const state = api.state = {
   animate: query.get('animate') !== 'false'
 };
 
-/** Flag `boolean` to capture screenshots. Default is `false`. */
+/** Flag `boolean` to capture screenshots automatically. Default is `false`. */
 const screenshots = api.screenshots = query.get('screenshots') === 'true';
 
 /**
@@ -239,7 +239,10 @@ const distortMetal = api.distortMetal =
 const distortRough = api.distortRough =
   parseFloat(query.get('distort-rough') || 0.9) || 0;
 
-/** Threshold `number` to give the distorted surface transparent gaps. */
+/**
+ * Distorted body threshold `number` to give the distorted surface transparent
+ * gaps.
+ */
 const distortGaps = api.distortGaps =
   parseFloat(query.get('distort-gaps') || 0.08) || 0;
   // parseFloat(query.get('distort-gaps') || 0.92) || 0;
@@ -251,7 +254,7 @@ const distortCullAlias = {
 };
 
 /**
- * Which polygon faces to cull (hide), any of:
+ * Distorted body `string` value of which polygon faces to cull (hide), any of:
  * - `none`/`None`: cull (hide) no faces, show all.
  * - `front`/`Front`: cull (hide) front-faces.
  * - `back`/`Back`: cull (hide) back-faces.
@@ -263,8 +266,11 @@ let distortCull = query.get('distort-cull') || 'front';
 
 distortCull = api.distortCull = distortCullAlias[distortCull] ?? distortCull;
 
-/** Flag `boolean` to render the distorted body. Default is `true`. */
-const bodyShow = api.bodyShow = query.get('body') !== 'false';
+/**
+ * Distorted body flag `boolean` to render the distorted body.
+ * Default is `true`.
+ */
+const distortOn = api.distortOn = query.get('distort') !== 'false';
 
 /**
  * Volume `number` taper ramp values, 4 values as 2 pairs:
@@ -277,7 +283,9 @@ const bodyShow = api.bodyShow = query.get('body') !== 'false';
  * Default is `0`-`0.03` (ramp distance from the volume surface) and `0.15`-`1`
  * (equivalent scaling of shapes in volume).
  */
-const volumeRamp = api.volumeRamp = [0, 3e-2, 0.15, 1];
+const volumeRamp = api.volumeRamp = ((query.has('volume-ramp'))?
+    map((v) => parseFloat(v), query.getAll('volume-ramp'), 0)
+  : [0, 3e-2, 0.15, 1]);
 
 /**
  * Distance `number` value to move shapes lying outside the volume back towards
@@ -301,7 +309,7 @@ const shapeColors = api.shapeColors = map((c) => color(c).buf,
   0);
 
 /**
- * Distorted body noise input `number` scaling values per-axis.
+ * Shape color noise input `number` scaling values per-axis.
  *
  * 4 values, like
  * `shape-color-noise=0&shape-color-noise=1&shape-color-noise=2&shape-color-noise=3`.
@@ -456,8 +464,8 @@ const growLengthRate = api.growLengthRate =
  * The rate of change, used to either multiply or divide the step amount.
  * Default is `1.2`, giving a 20% increase or decrease any time a rule uses it.
  */
-const growWidthRate = api.growWidthRate =
-  parseFloat(query.get('grow-width-rate') || 1.2) || 0;
+const growScaleRate = api.growScaleRate =
+  parseFloat(query.get('grow-scale-rate') || 1.2) || 0;
 
 /**
  * Grow L-system `number` angle rate to change the `grow-angle` by rules.
@@ -521,7 +529,8 @@ const growAxiom = api.growAxiom = ruleURL(query.get('grow-axiom') ?? '^^A');
 
 /**
  * Grow L-system `string` production rules, to iterate the L-system growth by
- * replacing the `grow-axiom`.
+ * replacing the `grow-axiom`, with the term/s on the left of a `->` (or `=`)
+ * replaced by the term/s to the right.
  * Any number of values, like `grow-rule=A->FA&grow-rule=F->AF` and any others.
  * Default is `A->M[F"![^A&&A]-A++A]`, growing a simple concentric form.
  *
@@ -782,7 +791,7 @@ async function toS3(to, at, type) {
     e.addComponent(renderer.material(bodyMaterialState)));
 
   body.root.transform
-    .set({ scale: range(3, 1.2), position: [0, -0.32, 0], enabled: bodyShow });
+    .set({ scale: range(3, 1.2), position: [0, -0.32, 0], enabled: distortOn });
 
   renderer.add(body.root, volume);
 
@@ -913,7 +922,7 @@ async function toS3(to, at, type) {
       angle: growAngle,
       // Step scale rates of change.
       lengthRate: growLengthRate,
-      widthRate: growWidthRate,
+      widthRate: growScaleRate,
       angleRate: growAngleRate,
       // Derived steps.
       ahead: undefined,
