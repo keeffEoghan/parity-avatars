@@ -129,9 +129,18 @@ const screenshotsAt = api.screenshotsAt = ((!screenshots)? null : [
 
 /**
  * Flag `boolean` to upload screenshots to `S3`, or local download otherwise.
- * Default is `true`.
+ *
+ * Requires a `.env` file at the project root with valid values for:
+ * - `AWS_BUCKET_NAME`
+ * - `AWS_REGION`
+ * - `AWS_ACCESS_SECRET`
+ * - `AWS_ACCESS_KEY_ID`
+ * - `AWS_PATH`
+ * - `AWS_URL`
+ *
+ * Default is `false`.
  */
-const upload = api.upload = query.get('upload') !== 'false';
+const upload = api.upload = query.get('upload') === 'true';
 
 /** Flag `boolean` to use the anti-aliasing post-process. Default is `true`. */
 const fxaa = api.fxaa = query.get('fxaa') !== 'false';
