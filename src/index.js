@@ -1,4 +1,4 @@
-const {
+let {
     AWS_BUCKET_NAME: bucket, AWS_PATH: uploadPath, AWS_REGION: region,
     AWS_ACCESS_SECRET: secretAccessKey, AWS_ACCESS_KEY_ID: accessKeyId
   } = process.env;
