@@ -1,5 +1,5 @@
 const {
-    AWS_BUCKET_NAME: bucketName, AWS_PATH: bucketPath, AWS_REGION: region,
+    AWS_BUCKET_NAME: bucket, AWS_PATH: uploadPath, AWS_REGION: region,
     AWS_ACCESS_SECRET: secretAccessKey, AWS_ACCESS_KEY_ID: accessKeyId
   } = process.env;
 
@@ -15,7 +15,7 @@ import { invert44 } from '@thi.ng/matrices/invert';
 import { mulVQ } from '@thi.ng/matrices/mulv';
 import { mulQ } from '@thi.ng/matrices/mulq';
 import { X3 as x3, Y3 as y3, Z3 as z3 } from '@thi.ng/vectors/api';
-import { set3 } from '@thi.ng/vectors/set';
+import { set3, set4 } from '@thi.ng/vectors/set';
 import { setC2, setC3, setC4 } from '@thi.ng/vectors/setc';
 import { mulN2, mulN3 } from '@thi.ng/vectors/muln';
 import { subN2 } from '@thi.ng/vectors/subn';
@@ -56,85 +56,181 @@ const {
     min, max, abs, floor, round, sqrt, sin, cos, PI: pi, TAU: tau = pi*2
   } = Math;
 
+const axisAngleToQuat = (to, x, y, z, a) =>
+  normalize3(to, setC4(to, x, y, z, cos(a *= 0.5)), sin(a));
+
+/**
+ * @see [Spherical distribution](https://observablehq.com/@rreusser/equally-distributing-points-on-a-sphere)
+ */
+const onSphere = (angle, depth, to = []) =>
+  mulN2(to, setC3(to, cos(angle), sin(angle), depth), sqrt(1-(depth*depth)));
+
+/** All the main inputs are passed in as query-string parameters. */
 const query = api.query = new URLSearchParams(location.search);
 
+/**
+ * The string ID of the avatar distinguishes its assets in the bucket/folder.
+ * Default is `id`.
+ */
 const id = api.id = query.get('id') ?? 'id';
+
+/** A random seed `integer`, for deterministic random number generation. */
 const seed = api.seed = parseInt(query.get('seed') ?? 0x67229302) || 0;
 const random = new Random(seed);
 const randomFloat = () => random.float();
 const randomInt = () => random.int();
 
-const axisAngleToQuat = (to, x, y, z, a) =>
-  normalize3(to, setC4(to, x, y, z, cos(a *= 0.5)), sin(a));
-
+/**
+ * Flag `boolean` to pause rendering when the page is blurred.
+ * Default is `true`.
+ */
 const pauseOnBlur = api.pauseOnBlur = query.get('pause-on-blur') !== 'false';
+
+/** The `number` level of quality of shadows, `0` to `4`. Default is `4`. */
 const shadows = api.shadows = parseFloat(query.get('shadows') || 4) || 0;
 
 const state = api.state = {
+  /** Flag `boolean` to start the app in a paused state. Default is `false`. */
   pause: query.get('pause') === 'true',
+  /** Flag `boolean` to animate or update instantly. Default is `true`. */
   animate: query.get('animate') !== 'false'
 };
 
+/** Flag `boolean` to capture screenshots. Default is `false`. */
 const screenshots = api.screenshots = query.get('screenshots') === 'true';
 
+/**
+ * Any camera positions to capture screenshots from.
+ * Up to 4 positions, denoted `screenshot-at-0` to `screenshot-at-3`.
+ *
+ * 3 `number` values per position, 1 per-axis, like
+ * `screenshot-at-0=0&screenshot-at-0=1&screenshot-at-0=2`.
+ *
+ * To disable a position and screenshot, pass any non-`number` value.
+ * Default is 4 valid camera positions.
+ */
 const screenshotsAt = api.screenshotsAt = ((!screenshots)? null : [
-  ((query.has('screenshot-at-0'))?
-      map((v) => parseFloat(v), query.getAll('screenshot-at-0'), 0)
-    : [0.17, 0.19, 0.74]),
-  ((query.has('screenshot-at-1'))?
-      map((v) => parseFloat(v), query.getAll('screenshot-at-1'), 0)
-    : [0.42, 0.26, 0.58]),
-  ((query.has('screenshot-at-2'))?
-      map((v) => parseFloat(v), query.getAll('screenshot-at-2'), 0)
-    : [-0.78, -0.19, -0.03]),
-  ((query.has('screenshot-at-3'))?
-      map((v) => parseFloat(v), query.getAll('screenshot-at-3'), 0)
-    : [0.09, 0.14, 0.51])
-]);
+    ((query.has('screenshot-at-0'))?
+        map((v) => parseFloat(v), query.getAll('screenshot-at-0'), 0)
+      : [0.17, 0.19, 0.74]),
+    ((query.has('screenshot-at-1'))?
+        map((v) => parseFloat(v), query.getAll('screenshot-at-1'), 0)
+      : [0.42, 0.26, 0.58]),
+    ((query.has('screenshot-at-2'))?
+        map((v) => parseFloat(v), query.getAll('screenshot-at-2'), 0)
+      : [-0.78, -0.19, -0.03]),
+    ((query.has('screenshot-at-3'))?
+        map((v) => parseFloat(v), query.getAll('screenshot-at-3'), 0)
+      : [0.09, 0.14, 0.51])
+  ]
+  .filter((at) => !isNaN(min(...at))));
 
 // const records = api.records = query.get('records') === 'true';
 
+/** Flag `boolean` to upload screenshots to `S3`, or local download. */
 const upload = api.upload = query.get('upload') === 'true';
 
-const scatter = api.scatter = parseFloat(query.get('scatter') || 3e3) || 0;
-
+/** Flag `boolean` to use the anti-aliasing post-process. Default is `true`. */
 const fxaa = api.fxaa = query.get('fxaa') !== 'false';
+
+/**
+ * Flag `boolean` to use the screen-space-ambient-occlusion post-process.
+ * Default is `true`.
+ */
 const ssao = api.ssao = query.get('ssao') !== 'false';
+
+/** Flag `boolean` to use the depth-of-field post-process. Default is `true`. */
 const dof = api.dof = query.get('dof') !== 'false';
+
+/** Flag `boolean` to use the emissive-bloom post-process. Default is `true`. */
 const bloom = api.bloom = query.get('bloom') !== 'false';
+
+/** Flag `boolean` to use the fog post-process. Default is `true`. */
 const fog = api.fog = query.get('fog') !== 'false';
 
+/**
+ * The fog `CSS` color `string`, like `#09f` (may need to `URL`-encode).
+ * Default is `#1e1e1e`.
+ */
 const fogColor = api.fogColor = color(query.get('fog-color') || '#1e1e1e')
   .buf.slice(0, 3);
 
-const distortOrient = api.distortOrient = query.get('distort-orient') !== false;
+/**
+ * Flag `boolean` to calculate surface normals for the distorted body.
+ * Default is `true`.
+ */
+const distortOrient = api.distortOrient =
+  query.get('distort-orient') !== 'false';
+
+/**
+ * Flag `boolean` or `number` value to use cell-noise for the distorted body,
+ * and if so which type.
+ *
+ * Given as `false` (uses classic noise); or a `number` (cell-noise type):
+ * - `0`: nearest cell.
+ * - `1`: next-nearest cell.
+ * - Any other `number`: Voronoi cell (`1-0`, true boundary).
+ *
+ * Default is `2`, for Voronoi cell-noise.
+ */
 let distortCell = query.get('distort-cell') || 2;
 
 distortCell = api.distortCell = ((distortCell !== 'false') && distortCell);
 
+/**
+ * Noise input `number` scaling values per-axis, for the distorted body.
+ * 3 values, like `distort-noise=0&distort-noise=1&distort-noise=2`.
+ */
 const distortNoise = api.distortNoise = ((query.has('distort-noise'))?
     map((v) => parseFloat(v) || 0, query.getAll('distort-noise'), 0)
   // : [12, 12, 1]);
   : [4, 4, 4]);
 
+/**
+ * Noise input `number` velocity values, per-axis, for the distorted body.
+ * 3 values, like `distort-speed=0&distort-speed=1&distort-speed=2`.
+ */
 const distortSpeed = api.distortSpeed = ((query.has('distort-speed'))?
     map((v) => parseFloat(v) || 0, query.getAll('distort-speed'), 0)
   : [0, 0, 5e-5]);
 
+/**
+ * Cell-noise `number` jitter amount for the distorted body.
+ * No jitter at `0` gives a linear grid; full jitter at `1` gives organic cells.
+ * Default is `1`.
+ */
 const distortJitter = api.distortJitter =
   parseFloat(query.get('distort-jitter') || 1) || 0;
 
+/**
+ * Distortion `number` amounts for the distorted body.
+ * 4 values, like
+ * `distort-surface=0&distort-surface=1&distort-surface=2&distort-surface=3`.
+ *
+ * Each entry denotes a different setting:
+ * 1. Amount the initial surface expands (`+`) or shrinks (`-`).
+ * 2. Amount to distort the surface normal.
+ * 3. Amount the distorted surface expands (`+`) or shrinks (`-`).
+ * 4. Threshold to make the distorted surface transparent (`+`) or opaque (`-`).
+ */
 const distortSurface = api.distortSurface = ((query.has('distort-surface'))?
     map((v) => parseFloat(v) || 0, query.getAll('distort-surface'), 0)
   : [1e-2, 0.1, 0.1, 0.3]);
   // : [3e-2, 0.1, 0.1, -1]);
 
+/**
+ * Metallic `number` value of physically-based-rendering of the distorted body.
+ */
 const distortMetal = api.distortMetal =
   parseFloat(query.get('distort-metal') || 0.1) || 0;
 
+/**
+ * Roughness `number` value of physically-based-rendering of the distorted body.
+ */
 const distortRough = api.distortRough =
   parseFloat(query.get('distort-rough') || 0.9) || 0;
 
+/** Threshold `number` to give the distorted surface transparent gaps. */
 const distortGaps = api.distortGaps =
   parseFloat(query.get('distort-gaps') || 0.08) || 0;
   // parseFloat(query.get('distort-gaps') || 0.92) || 0;
@@ -142,17 +238,44 @@ const distortGaps = api.distortGaps =
 const distortCullAlias = {
   none: 'None',
   front: 'Front', back: 'Back',
-  both: 'FrontAndBack', 'front-and-back': 'FrontAndBack'
+  both: 'FrontAndBack', Both: 'FrontAndBack', 'front-and-back': 'FrontAndBack'
 };
 
+/**
+ * Which polygon faces to cull (hide), any of:
+ * - `none`/`None`: cull (hide) no faces, show all.
+ * - `front`/`Front`: cull (hide) front-faces.
+ * - `back`/`Back`: cull (hide) back-faces.
+ * - `both`/`Both`/`front-and-back`/`FrontAndBack`: cull (hide) all faces.
+ *
+ * Default is `front`.
+ */
 let distortCull = query.get('distort-cull') || 'front';
 
 distortCull = api.distortCull = distortCullAlias[distortCull] ?? distortCull;
 
+/** Flag `boolean` to render the distorted body. Default is `true`. */
 const bodyShow = api.bodyShow = query.get('body') !== 'false';
 
-const volumeRamp = api.volumeRamp = [-3e-2, 0, 0.15, 1];
+/**
+ * Volume `number` taper ramp values, 4 values as 2 pairs:
+ * - Values `0`-`1`: start-end ramp of distance from the volume surface.
+ * - Values `2`-`3`: start-end ramp of equivalent scaling of shapes in volume.
+ *
+ * If animating, the ramp distance from the volume surface will animate in from
+ * `0` to the end value.
+ *
+ * Default is `0`-`0.03` (ramp distance from the volume surface) and `0.15`-`1`
+ * (equivalent scaling of shapes in volume).
+ */
+const volumeRamp = api.volumeRamp = [0, 3e-2, 0.15, 1];
 
+/**
+ * Distance `number` value to move shapes lying outside the volume back towards
+ * the volume, relative to how far they lie outside it.
+ * Controls how the shapes are clamped within the volume.
+ * Default is `1.5`.
+ */
 const volumeClamp = api.volumeClamp =
   parseFloat(query.get('volume-clamp') || 1.5);
 
@@ -178,6 +301,39 @@ const shapeScales = api.shapeScales = ((query.has('shape-scale'))?
 const useShapes = api.useShapes = ((query.has('shape'))? query.getAll('shape')
   : ['cube-f', 'tetrahedron-f']);
 
+/** How many instances to scatter randomly before growing the L-system. */
+const scatter = api.scatter = parseFloat(query.get('scatter') || 3e3) || 0;
+
+/** Whether the scatter applies instance offsets. */
+const scatterOffsets = api.scatterOffsets =
+  query.get('scatter-offsets') !== 'false';
+
+/**
+ * Whether the scatter applies instance rotations.
+ * Leave disabled to better see shapes align to the volume surface.
+ */
+const scatterRotates = api.scatterRotates =
+  query.get('scatter-rotates') === 'true';
+
+/** Whether the scatter applies instance scales. */
+const scatterScales = api.scatterScales =
+  query.get('scatter-scales') !== 'false';
+
+/** How many L-system grow steps to iterate. */
+const growSteps = api.growSteps = parseInt(query.get('grow-steps') || 0) || 0;
+
+/** Whether the L-system growth applies instance offsets. */
+const growOffsets = api.growOffsets = query.get('grow-offsets') !== 'false';
+
+/**
+ * Whether the L-system growth applies instance rotations.
+ * Leave disabled to better see shapes align to the volume surface.
+ */
+const growRotates = api.growRotates = query.get('grow-rotates') === 'true';
+
+/** Whether the L-system growth applies instance scales. */
+const growScales = api.growScales = query.get('grow-scales') !== 'false';
+
 // Instance properties.
 
 const growOffset = api.growOffset = ((query.has('grow-offset'))?
@@ -188,10 +344,10 @@ const growRotate = api.growRotate = ((query.has('grow-rotate'))?
     map((v) => parseFloat(v), query.getAll('grow-rotate'), 0)
   : axisAngleToQuat([], ...y3, pi*0.08));
 
-// Step scales.
-
 const growScale = api.growScale =
   parseFloat(query.get('grow-scale') || mix(...shapeScales, 0.5)) || 0;
+
+// Step scales.
 
 const growLength = api.growLength =
   parseFloat(query.getAll('grow-length') || 7e-2) || 0;
@@ -211,7 +367,7 @@ const growAngleRate = api.growAngleRate =
   parseFloat(query.getAll('grow-angle-rate') || 1.2) || 0;
 
 /**
- * L-system grow rules.
+ * L-system grow axiom and rules.
  * Original set: `FHGfhJKMT+-&^\/|*~"!;_?@[]<>`.
  * URL aliases: `FHGfhJKMT -$^\/|*~"!;_.@[]<>`.
  *
@@ -247,10 +403,10 @@ const growAngleRate = api.growAngleRate =
  *
  * @see [3D interactive demo](https://github.com/nylki/lindenmayer/blob/main/docs/examples/interactive_lsystem_builder/index_3d.html)
  * @see [Houdini L-system syntax](https://www.sidefx.com/docs/houdini/nodes/sop/lsystem.html)
+ * @see [Houdini L-system recipes](https://www.houdinikitchen.net/2019/12/21/how-to-create-l-systems/)
  */
 
-const growSteps = api.growSteps = parseInt(query.get('grow-steps') || 0) || 0;
-const growAxiom = api.growAxiom = query.get('grow-axiom') ?? '^^FffM';
+const growAxiom = api.growAxiom = query.get('grow-axiom') ?? '^^M';
 // const growAxiom = api.growAxiom = query.get('grow-axiom') ?? '^A^A[fA]fA^[--fA][++fA]';
 // const growAxiom = api.growAxiom = query.get('grow-axiom') ?? '^A^A^A';
 
@@ -266,13 +422,24 @@ const growRules = api.growRules = ((query.has('grow-rule'))?
         // 'M->[F_?[^[fM]&&[fM]]-[fM]++[fM]]',
         // M: [{ symbol: 'M', test: 1 }],
         // Tree.
-        'F->/fM[+F]\\fM[-F]F'
+        'F->/fM[+F]\\fM[-F]F',
+        'M->/fM[+F]\\fM[-F]F'
         // 'A->AF[+AF]AF[-AF]AF',
         // 'M->-F+!M:0.40',
         // 'M->+F-!M:0.40',
         // 'M->~(30)[--"M]M:0.1',
         // 'M->~(30)[++"M]M:0.1',
     ]);
+
+/**
+ * Grow an L-system at each scattered point, separate processes otherwise.
+ *
+ * Caution, can be very costly at high settings or inputs, combinatorially
+ * explosive with scatter and grow amounts!
+ *
+ * Default is `false`.
+ */
+const scatterGrow = api.scatterGrow = query.get('scatter-grow') === 'true';
 
 const eyeScale = api.eyeScale =
   range(3, parseFloat(query.get('eye-scale') || 3e-2) || 0);
@@ -324,10 +491,8 @@ const s3 = new S3Client({
   credentials: { accessKeyId, secretAccessKey }
 });
 
-async function toS3(to, name, type) {
-  const c = {
-    Bucket: bucketName, Key: bucketPath+name, Body: to, ContentType: type
-  };
+async function toS3(to, at, type) {
+  const c = { Bucket: bucket, Key: uploadPath+at, Body: to, ContentType: type };
 
   try { console.log('S3 uploaded', c, await s3.send(new PutObjectCommand(c))); }
   catch(e) { console.warn('S3 error', c, e); }
@@ -443,8 +608,7 @@ async function toS3(to, name, type) {
 
   const distortPre = api.distortPre =
     ((distortOrient)? '#define x_orientToField\n' : '')+
-    ((distortCell !== false)?
-      `#define x_cellNoise${(distortCell)? ' '+distortCell : ''}\n` : '');
+    ((distortCell !== false)? `#define x_cellNoise ${distortCell}\n` : '');
 
   const bodyMaterialState = api.bodyMaterialState = {
     vert: distortPre+distort.vert, frag: distortPre+distort.frag,
@@ -538,7 +702,7 @@ async function toS3(to, name, type) {
       x_volumeTile: [8, 8],
       x_volumeInverse: [],
       // Starting the ramp off below 0, to grow the shapes in over time.
-      x_volumeRamp: [-3e-2, 0, 0.15, 1],
+      x_volumeRamp: addN2(null, [...volumeRamp], -volumeRamp[1]),
       x_volumeSurface: [0.1, -shapeTo.volumeClamp*1.5],
       x_colors: shapeColors,
       x_colorNoise: shapeColorNoise,
@@ -549,35 +713,33 @@ async function toS3(to, name, type) {
     ...blend
   };
 
-  /**
-   * @see [Spherical distribution](https://observablehq.com/@rreusser/equally-distributing-points-on-a-sphere)
-   */
-  const onSphere = (angle, depth, to = []) =>
-    mulN2(to, setC3(to, cos(angle), sin(angle), depth), sqrt(1-(depth*depth)));
-
   const instancesAll = api.instancesAll = { instances: 0 };
 
   const instancesShapes = api.instancesShapes =
     map(() => ({ ...instancesAll }), shapes);
 
+  const instanced = api.instanced = (instances, at, to) =>
+    (instances[at] ??= { data: to ?? [], divisor: 1 }).data;
+
   scatter && reduce((all, _, i, a) => {
       const to = wrap(randomInt(), instancesShapes);
-      const allOffsets = (all.offsets ??= { data: a, divisor: 1 }).data;
-      const offsets = (to.offsets ??= { data: [], divisor: 1 }).data;
-      const allRotations = (all.rotations ??= { data: [], divisor: 1 }).data;
-      const rotations = (to.rotations ??= { data: [], divisor: 1 }).data;
-      const allScales = (all.scales ??= { data: [], divisor: 1 }).data;
-      const scales = (to.scales ??= { data: [], divisor: 1 }).data;
-      const { radius, centre } = wrap(randomInt(), volumeBounds);
 
-      offsets.push(allOffsets[i] = maddN3(null,
-        onSphere(randomFloat()*tau, mix(-1, 1, randomFloat())),
-        (randomFloat()**0.6)*radius, centre));
+      if(scatterOffsets) {
+        const { radius, centre } = wrap(randomInt(), volumeBounds);
 
-      rotations.push(allRotations[i] = axisAngleToQuat(null,
-        randomFloat(), randomFloat(), randomFloat(), randomFloat()*tau));
+        instanced(to, 'offsets').push(instanced(all, 'offsets', a)[i] =
+          maddN3(null, onSphere(randomFloat()*tau, mix(-1, 1, randomFloat())),
+            (randomFloat()**0.6)*radius, centre));
+      }
 
-      scales.push(allScales[i] = range(3, mix(...shapeScales, randomFloat())));
+      scatterRotates &&
+        instanced(to, 'rotations').push(instanced(all, 'rotations')[i] =
+          axisAngleToQuat(null,
+            randomFloat(), randomFloat(), randomFloat(), randomFloat()*tau));
+
+      scatterScales &&
+        instanced(to, 'scales').push(instanced(all, 'scales')[i] =
+          range(3, mix(...shapeScales, randomFloat())));
 
       ++all.instances;
       ++to.instances;
@@ -593,8 +755,8 @@ async function toS3(to, name, type) {
       // Instance target.
       shape: 0,
       // Instance properties.
-      offset: growOffset,
-      rotation: growRotate,
+      offset: [...growOffset],
+      rotation: [...growRotate],
       scale: range(3, growScale),
       // Step scales.
       length: growLength,
@@ -617,15 +779,7 @@ async function toS3(to, name, type) {
       const { all, shapes } = instances;
       const s = to.shape = wrap(shape ??= at.shape, shapes);
 
-      (scale ??= [...toScale(to)]) &&
-        (all.scales ??= { data: [], divisor: 1 }).data.push(scale) &&
-        (s.scales ??= { data: [], divisor: 1 }).data.push(scale);
-
-      (rotation ??= [...toRotation(to)]) &&
-        (all.rotations ??= { data: [], divisor: 1 }).data.push(rotation) &&
-        (s.rotations ??= { data: [], divisor: 1 }).data.push(rotation);
-
-      if(offset ??= [...toOffset(to)]) {
+      if(growOffsets && (offset ??= [...toOffset(to)])) {
         let near;
 
         // Distance outside the nearest volume.
@@ -639,13 +793,23 @@ async function toS3(to, name, type) {
           volumeBounds, Infinity);
 
         // Wrap inside the nearest volume.
-        (d > 0) &&
-          mixN3(null, offset, near.centre, (d+(near.radius*2))/(d+near.radius));
+        if(near && (d > 0)) {
+          const { centre: nc, radius: nr } = near;
 
-        offset &&
-          (all.offsets ??= { data: [], divisor: 1 }).data.push(offset) &&
-          (s.offsets ??= { data: [], divisor: 1 }).data.push(offset);
+          mixN3(null, offset, nc, (d+nr+nr)/(d+nr));
+        }
+
+        instanced(all, 'offsets').push(offset);
+        instanced(s, 'offsets').push(offset);
       }
+
+      growRotates && (rotation ??= [...toRotation(to)]) &&
+        instanced(all, 'rotations').push(rotation) &&
+        instanced(s, 'rotations').push(rotation);
+
+      growScales && (scale ??= [...toScale(to)]) &&
+        instanced(all, 'scales').push(scale) &&
+        instanced(s, 'scales').push(scale);
 
       ++all.instances;
       ++s.instances;
@@ -687,6 +851,7 @@ async function toS3(to, name, type) {
     /**
      * @see [3D interactive demo](https://github.com/nylki/lindenmayer/blob/main/docs/examples/interactive_lsystem_builder/index_3d.html)
      * @see [Houdini L-system syntax](https://www.sidefx.com/docs/houdini/nodes/sop/lsystem.html)
+     * @see [Houdini L-system recipes](https://www.houdinikitchen.net/2019/12/21/how-to-create-l-systems/)
      */
     /** Move forward, creating geometry. */
     F: (i, to) => to.toOffset(to, 1, i.part.size) && to.toInstance(to),
@@ -761,7 +926,6 @@ async function toS3(to, name, type) {
   const growSystem = grow.system = new LSystem({
     // forceObjects: true,
     finals: growFinals,
-    axiom: growAxiom,
     productions: reduce((productions, r) => {
         const [at, to] = r.split(/(?:=|(?:->))/);
 
@@ -772,10 +936,25 @@ async function toS3(to, name, type) {
       growRules, {})
   });
 
-  grow.setup(grow);
-  console.log(growSystem.axiom, growRules, growSystem.productions);
-  console.log(growSystem.iterate(growSteps));
-  growSystem.final(grow);
+  const growRun = grow.run = (offset, rotation, scale) => {
+    const { offset: o, rotation: r, scale: s } = grow.at;
+
+    offset && set3(o, offset);
+    rotation && set4(r, rotation);
+    (scale || (scale === 0)) && setC3(s, scale, scale, scale);
+    growSystem.setAxiom(growAxiom);
+    grow.setup(grow);
+    console.log(growSystem.axiom, growRules, growSystem.productions);
+    console.log(growSystem.iterate(growSteps));
+    growSystem.final(grow);
+  };
+
+  ((!scatterGrow)? growRun()
+  : each((offset, i) =>
+        growRun(offset,
+          instanced(instancesAll, 'rotations')[i],
+          instanced(instancesAll, 'scales')[i]),
+      instanced(instancesAll, 'offsets')));
 
   const shapeRoot = api.shapeRoot = renderer.add(renderer.entity());
 
@@ -891,7 +1070,7 @@ async function toS3(to, name, type) {
 
     const expose = camera.exposure;
 
-    (1-expose > eps) && camera.set({ exposure: mix(expose, 1, ee) });
+    (abs(expose-1) > eps) && camera.set({ exposure: mix(expose, 1, ee) });
 
     const { scale: eyeS, intensity: eyeI } = eyesTo;
 
@@ -934,7 +1113,7 @@ async function toS3(to, name, type) {
   const screenshot = api.screenshot = (to, p = id, s = '@', type = 'png') =>
     new Promise((y) => context.frame(() => {
       const { animate } = state;
-      const at = (new Date()).toISOString();
+      const at = (new Date()).toISOString().replace(/(:|\.)/gi, '-');
 
       to && orbit.set(to);
       orbit.update();
