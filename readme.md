@@ -2,7 +2,7 @@
 
 Generative avatars for Parity staff as unique NFTs that evolve with their careers.
 
-![Demo screenshot](./snap/vo-0.png)
+![Demo screenshot](./snap/v0-0.png)
 
 ## Temporary Demo
 
