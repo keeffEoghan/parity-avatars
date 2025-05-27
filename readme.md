@@ -2,6 +2,8 @@
 
 Generative avatars for Parity staff as unique NFTs that evolve with their careers.
 
+![Demo screenshot](./snap/vo-0.png)
+
 ## Temporary Demo
 
 See the temporary live demo on the [separate GitHub Pages site](https://epok.tech/wip-project-demo-1/).
